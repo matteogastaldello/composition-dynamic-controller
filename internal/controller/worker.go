@@ -10,21 +10,17 @@ import (
 const maxRetries = 3
 
 func (c *Controller) runWorker(ctx context.Context) {
-	for c.processNextItem(ctx) {
+	for {
+		obj, shutdown := c.queue.Get()
+		if shutdown {
+			break
+		}
+
+		defer c.queue.Done(obj)
+
+		err := c.processItem(ctx, obj)
+		c.handleErr(err, obj)
 	}
-}
-
-func (c *Controller) processNextItem(ctx context.Context) bool {
-	obj, shutdown := c.queue.Get()
-	if shutdown {
-		return false
-	}
-	defer c.queue.Done(obj)
-
-	err := c.processItem(ctx, obj)
-	c.handleErr(err, obj)
-
-	return true
 }
 
 func (c *Controller) handleErr(err error, obj interface{}) {
