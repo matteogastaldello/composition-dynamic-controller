@@ -1,0 +1,10 @@
+apiVersion: dummy-charts.krateo.io/v0-2-0
+kind: DummyChart
+metadata:
+  name: poc
+  namespace: demo-system
+spec:
+  data:
+    like: false
+    greeting: "Hello World!"
+    counter: 1
