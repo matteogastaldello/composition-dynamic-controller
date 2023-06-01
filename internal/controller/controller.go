@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller/handlers"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/listwatcher"
 	"github.com/rs/zerolog"
 	"golang.org/x/time/rate"
@@ -34,6 +35,7 @@ type Controller struct {
 	informer cache.Controller
 	recorder record.EventRecorder
 	logger   *zerolog.Logger
+	funcs    map[eventType]func(context.Context, unstructured.Unstructured) error
 }
 
 // New creates a new Controller.
@@ -66,16 +68,34 @@ func New(opts Options) *Controller {
 			},
 			UpdateFunc: func(old, new interface{}) {
 				key, err := cache.MetaNamespaceKeyFunc(new)
-				if err == nil {
-					queue.Add(event{
-						eventType: objectUpdate,
-						objKey:    key,
-					})
+				if err != nil {
+					opts.Logger.Warn().Err(err).Msg("Getting meta namespace key.")
+					return
 				}
+
+				oldUns, ok := old.(*unstructured.Unstructured)
+				if !ok {
+					opts.Logger.Warn().Msg("UpdateFunc: object is not an unstructured.")
+					return
+				}
+
+				newUns, ok := new.(*unstructured.Unstructured)
+				if !ok {
+					opts.Logger.Warn().Msg("UpdateFunc: object is not an unstructured.")
+					return
+				}
+
+				if oldUns.GetGeneration() == newUns.GetGeneration() {
+					return
+				}
+
+				queue.Add(event{
+					eventType: objectUpdate,
+					objKey:    key,
+				})
+
 			},
 			DeleteFunc: func(obj interface{}) {
-				// IndexerInformer uses a delta queue, therefore for deletes we have to use this
-				// key function.
 				key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 				if err == nil {
 					queue.Add(event{
@@ -95,6 +115,10 @@ func New(opts Options) *Controller {
 		informer: informer,
 		indexer:  indexer,
 		queue:    queue,
+		funcs: map[eventType]func(context.Context, unstructured.Unstructured) error{
+			objectAdd:    handlers.HandleCreate(opts.Logger),
+			objectUpdate: handlers.HandleUpdate(opts.Logger),
+		},
 	}
 }
 

@@ -7,7 +7,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/runtime"
 )
 
-const maxRetries = 3
+const (
+	maxRetries = 3
+)
 
 func (c *Controller) runWorker(ctx context.Context) {
 	for {
@@ -59,6 +61,15 @@ func (c *Controller) processItem(ctx context.Context, obj interface{}) error {
 }
 
 func (c *Controller) handleAddEvent(ctx context.Context, key string) error {
+	handler := c.funcs[objectAdd]
+	if handler == nil {
+		c.logger.Warn().
+			Str("eventType", string(objectAdd)).
+			Str("key", key).
+			Msg("No event handler registered.")
+		return nil
+	}
+
 	obj, exists, err := c.indexer.GetByKey(key)
 	if err != nil {
 		c.logger.Error().Str("key", key).Err(err).Msg("Fetching object.")
@@ -71,16 +82,19 @@ func (c *Controller) handleAddEvent(ctx context.Context, key string) error {
 	}
 
 	el := obj.(*unstructured.Unstructured)
-	c.logger.Debug().
-		Str("apiVersion", el.GetAPIVersion()).
-		Str("kind", el.GetKind()).
-		Str("name", el.GetName()).
-		Msg("Handling add event.")
-
-	return nil
+	return handler(ctx, *el.DeepCopy())
 }
 
 func (c *Controller) handleUpdateEvent(ctx context.Context, key string) error {
+	handler := c.funcs[objectAdd]
+	if handler == nil {
+		c.logger.Warn().
+			Str("eventType", string(objectUpdate)).
+			Str("key", key).
+			Msg("No event handler registered.")
+		return nil
+	}
+
 	obj, exists, err := c.indexer.GetByKey(key)
 	if err != nil {
 		c.logger.Error().Str("key", key).Err(err).Msg("Fetching object.")
@@ -93,18 +107,10 @@ func (c *Controller) handleUpdateEvent(ctx context.Context, key string) error {
 	}
 
 	el := obj.(*unstructured.Unstructured)
-	c.logger.Debug().
-		Str("apiVersion", el.GetAPIVersion()).
-		Str("kind", el.GetKind()).
-		Str("name", el.GetName()).
-		Msg("Handling update event.")
-
-	return nil
+	return handler(ctx, *el.DeepCopy())
 }
 
 func (c *Controller) handleDeleteEvent(ctx context.Context, key string) error {
-	c.logger.Debug().
-		Str("key", key).
-		Msg("Handling delete event.")
+	c.logger.Debug().Str("key", key).Msg("Deleted.")
 	return nil // NOOP
 }
