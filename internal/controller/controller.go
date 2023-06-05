@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -20,22 +21,24 @@ import (
 )
 
 type Options struct {
-	Client         dynamic.Interface
-	GVR            schema.GroupVersionResource
-	Namespace      string
-	ResyncInterval time.Duration
-	Recorder       record.EventRecorder
-	Logger         *zerolog.Logger
+	Client          dynamic.Interface
+	DiscoveryClient *discovery.DiscoveryClient
+	GVR             schema.GroupVersionResource
+	Namespace       string
+	ResyncInterval  time.Duration
+	Recorder        record.EventRecorder
+	Logger          *zerolog.Logger
 }
 
 type Controller struct {
-	client   dynamic.Interface
-	queue    workqueue.RateLimitingInterface
-	indexer  cache.Indexer
-	informer cache.Controller
-	recorder record.EventRecorder
-	logger   *zerolog.Logger
-	funcs    map[eventType]func(context.Context, unstructured.Unstructured) error
+	dynamicClient   dynamic.Interface
+	discoveryClient *discovery.DiscoveryClient
+	queue           workqueue.RateLimitingInterface
+	indexer         cache.Indexer
+	informer        cache.Controller
+	recorder        record.EventRecorder
+	logger          *zerolog.Logger
+	funcs           map[eventType]func(context.Context, unstructured.Unstructured) error
 }
 
 // New creates a new Controller.
@@ -109,12 +112,13 @@ func New(opts Options) *Controller {
 	)
 
 	return &Controller{
-		client:   opts.Client,
-		recorder: opts.Recorder,
-		logger:   opts.Logger,
-		informer: informer,
-		indexer:  indexer,
-		queue:    queue,
+		dynamicClient:   opts.Client,
+		discoveryClient: opts.DiscoveryClient,
+		recorder:        opts.Recorder,
+		logger:          opts.Logger,
+		informer:        informer,
+		indexer:         indexer,
+		queue:           queue,
 		funcs: map[eventType]func(context.Context, unstructured.Unstructured) error{
 			objectAdd:    handlers.HandleCreate(opts.Logger),
 			objectUpdate: handlers.HandleUpdate(opts.Logger),

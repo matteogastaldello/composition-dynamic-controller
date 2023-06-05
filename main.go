@@ -14,6 +14,7 @@ import (
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/support"
 	"github.com/rs/zerolog"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -77,9 +78,14 @@ func main() {
 		log.Fatal().Err(err).Msg("Building kubeconfig.")
 	}
 
-	dc, err := dynamic.NewForConfig(cfg)
+	dyn, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Creating dynamic client.")
+	}
+
+	dis, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Creating discovery client.")
 	}
 
 	rec, err := eventrecorder.Create(cfg)
@@ -97,8 +103,9 @@ func main() {
 		Msgf("Starting %s.", serviceName)
 
 	ctrl := controller.New(controller.Options{
-		Client:         dc,
-		ResyncInterval: *resyncInterval,
+		Client:          dyn,
+		DiscoveryClient: dis,
+		ResyncInterval:  *resyncInterval,
 		GVR: schema.GroupVersionResource{
 			Group:    *resourceGroup,
 			Version:  *resourceVersion,
