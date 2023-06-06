@@ -12,6 +12,7 @@ import (
 	unstructuredtools "github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured"
 
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/release"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -22,6 +23,35 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 )
+
+type PackageInfo struct {
+	// URL of the helm chart package that is being requested.
+	URL string `json:"url"`
+
+	// Version of the chart release.
+	// +optional
+	Version *string `json:"version,omitempty"`
+}
+
+type PackageInfoGetter interface {
+	GetPackage(ctx context.Context) (PackageInfo, error)
+}
+
+var _ PackageInfoGetter = (*staticPackageInfoGetter)(nil)
+
+type staticPackageInfoGetter struct {
+	chartName string
+}
+
+func (pig staticPackageInfoGetter) GetPackage(ctx context.Context) (PackageInfo, error) {
+	return PackageInfo{
+		URL: pig.chartName,
+	}, nil
+}
+
+func NewStaticPackageInfoGetter(chart string) PackageInfoGetter {
+	return staticPackageInfoGetter{chartName: chart}
+}
 
 func DeriveGroupVersionKind(cli helmclient.Client, url string) (schema.GroupVersionKind, error) {
 	chart, _, err := cli.GetChart(url, &action.ChartPathOptions{})
@@ -152,6 +182,23 @@ func CheckObjects(ctx context.Context, objects []unstructuredtools.ObjectRef, op
 	}
 
 	return nil, nil
+}
+
+func FindRelease(hc helmclient.Client, name string) (*release.Release, error) {
+	all, err := hc.ListDeployedReleases()
+	if err != nil {
+		return nil, err
+	}
+
+	var res *release.Release
+	for _, el := range all {
+		if name == el.Name {
+			res = el
+			break
+		}
+	}
+
+	return res, nil
 }
 
 type object interface {

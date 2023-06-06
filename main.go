@@ -9,9 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/composition"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/eventrecorder"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/support"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart"
 	"github.com/rs/zerolog"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -44,6 +46,8 @@ func main() {
 		support.EnvString("COMPOSITION_CONTROLLER_RESOURCE", ""), "resource plural name")
 	namespace := flag.String("namespace",
 		support.EnvString("COMPOSITION_CONTROLLER_NAMESPACE", ""), "namespace")
+	chart := flag.String("chart",
+		support.EnvString("COMPOSITION_CONTROLLER_CHART", ""), "chart")
 
 	flag.Usage = func() {
 		fmt.Fprintln(flag.CommandLine.Output(), "Flags:")
@@ -93,6 +97,12 @@ func main() {
 		log.Fatal().Err(err).Msg("Creating event recorder.")
 	}
 
+	var pig helmchart.PackageInfoGetter
+	if len(*chart) > 0 {
+		pig = helmchart.NewStaticPackageInfoGetter(*chart)
+	}
+	handler := composition.NewHandler(cfg, &log, pig)
+
 	log.Info().
 		Str("build", Build).
 		Bool("debug", *debug).
@@ -115,6 +125,7 @@ func main() {
 		Recorder:  rec,
 		Logger:    &log,
 	})
+	ctrl.SetExternalClient(handler)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), []os.Signal{
 		os.Interrupt,

@@ -1,10 +1,33 @@
 package tools
 
 import (
+	"context"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 )
+
+type UpdateStatusOptions struct {
+	DiscoveryClient *discovery.DiscoveryClient
+	DynamicClient   dynamic.Interface
+}
+
+func UpdateStatus(ctx context.Context, el *unstructured.Unstructured, opts UpdateStatusOptions) error {
+	gvr, err := GVKtoGVR(opts.DiscoveryClient, el.GroupVersionKind())
+	if err != nil {
+		return err
+	}
+
+	_, err = opts.DynamicClient.Resource(gvr).
+		Namespace(el.GetNamespace()).
+		UpdateStatus(ctx, el, metav1.UpdateOptions{})
+
+	return err
+}
 
 func GVKtoGVR(dc *discovery.DiscoveryClient, gvk schema.GroupVersionKind) (schema.GroupVersionResource, error) {
 	groupResources, err := restmapper.GetAPIGroupResources(dc)

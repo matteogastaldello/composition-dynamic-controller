@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller/handlers"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/listwatcher"
 	"github.com/rs/zerolog"
 	"golang.org/x/time/rate"
@@ -28,6 +27,7 @@ type Options struct {
 	ResyncInterval  time.Duration
 	Recorder        record.EventRecorder
 	Logger          *zerolog.Logger
+	ExternalClient  ExternalClient
 }
 
 type Controller struct {
@@ -38,7 +38,7 @@ type Controller struct {
 	informer        cache.Controller
 	recorder        record.EventRecorder
 	logger          *zerolog.Logger
-	funcs           map[eventType]func(context.Context, unstructured.Unstructured) error
+	externalClient  ExternalClient
 }
 
 // New creates a new Controller.
@@ -62,12 +62,15 @@ func New(opts Options) *Controller {
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				key, err := cache.MetaNamespaceKeyFunc(obj)
-				if err == nil {
-					queue.Add(event{
-						eventType: objectAdd,
-						objKey:    key,
-					})
+				if err != nil {
+					opts.Logger.Warn().Err(err).Msg("Getting meta namespace key.")
+					return
 				}
+
+				queue.Add(event{
+					eventType: Observe,
+					objKey:    key,
+				})
 			},
 			UpdateFunc: func(old, new interface{}) {
 				key, err := cache.MetaNamespaceKeyFunc(new)
@@ -89,20 +92,23 @@ func New(opts Options) *Controller {
 				}
 
 				if oldUns.GetGeneration() == newUns.GetGeneration() {
+					queue.Add(event{
+						eventType: Observe,
+						objKey:    key,
+					})
 					return
 				}
 
 				queue.Add(event{
-					eventType: objectUpdate,
+					eventType: Update,
 					objKey:    key,
 				})
-
 			},
 			DeleteFunc: func(obj interface{}) {
 				key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 				if err == nil {
 					queue.Add(event{
-						eventType: objectDelete,
+						eventType: Delete,
 						objKey:    key,
 					})
 				}
@@ -119,11 +125,12 @@ func New(opts Options) *Controller {
 		informer:        informer,
 		indexer:         indexer,
 		queue:           queue,
-		funcs: map[eventType]func(context.Context, unstructured.Unstructured) error{
-			objectAdd:    handlers.HandleCreate(opts.Logger),
-			objectUpdate: handlers.HandleUpdate(opts.Logger),
-		},
+		externalClient:  opts.ExternalClient,
 	}
+}
+
+func (c *Controller) SetExternalClient(ec ExternalClient) {
+	c.externalClient = ec
 }
 
 // Run begins watching and syncing.

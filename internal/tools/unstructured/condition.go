@@ -32,6 +32,15 @@ func Creating() metav1.Condition {
 	}
 }
 
+func CreatingFailed(reason string) metav1.Condition {
+	return metav1.Condition{
+		Type:               TypeReady,
+		Status:             metav1.ConditionFalse,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+	}
+}
+
 // Deleting returns a condition that indicates the resource is currently
 // being deleted.
 func Deleting() metav1.Condition {

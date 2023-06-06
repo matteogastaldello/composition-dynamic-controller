@@ -37,7 +37,7 @@ func (c *Controller) handleErr(err error, obj interface{}) {
 		return
 	}
 
-	c.logger.Error().Msgf("error processing event: %v, max retries reached", err)
+	c.logger.Error().Err(err).Msg("error processing event (max retries reached)")
 	c.queue.Forget(obj)
 	runtime.HandleError(err)
 }
@@ -49,22 +49,23 @@ func (c *Controller) processItem(ctx context.Context, obj interface{}) error {
 		return nil
 	}
 	switch evt.eventType {
-	case objectAdd:
-		return c.handleAddEvent(ctx, evt.objKey)
-	case objectUpdate:
+	case Observe:
+		return c.handleObserve(ctx, evt.objKey)
+	case Create:
+		return c.handleCreate(ctx, evt.objKey)
+	case Update:
 		return c.handleUpdateEvent(ctx, evt.objKey)
-	case objectDelete:
+	case Delete:
 		return c.handleDeleteEvent(ctx, evt.objKey)
 	default:
 		return nil
 	}
 }
 
-func (c *Controller) handleAddEvent(ctx context.Context, key string) error {
-	handler := c.funcs[objectAdd]
-	if handler == nil {
+func (c *Controller) handleObserve(ctx context.Context, key string) error {
+	if c.externalClient == nil {
 		c.logger.Warn().
-			Str("eventType", string(objectAdd)).
+			Str("eventType", string(Observe)).
 			Str("key", key).
 			Msg("No event handler registered.")
 		return nil
@@ -82,14 +83,49 @@ func (c *Controller) handleAddEvent(ctx context.Context, key string) error {
 	}
 
 	el := obj.(*unstructured.Unstructured)
-	return handler(ctx, *el.DeepCopy())
+	exists, err = c.externalClient.Observe(ctx, el.DeepCopy())
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		c.queue.Add(event{
+			eventType: Create,
+			objKey:    key,
+		})
+	}
+
+	return nil
+}
+
+func (c *Controller) handleCreate(ctx context.Context, key string) error {
+	if c.externalClient == nil {
+		c.logger.Warn().
+			Str("eventType", string(Create)).
+			Str("key", key).
+			Msg("No event handler registered.")
+		return nil
+	}
+
+	obj, exists, err := c.indexer.GetByKey(key)
+	if err != nil {
+		c.logger.Error().Str("key", key).Err(err).Msg("Fetching object.")
+		return err
+	}
+
+	if !exists {
+		c.logger.Warn().Str("key", key).Msg("Object does not exists anymore.")
+		return nil
+	}
+
+	el := obj.(*unstructured.Unstructured)
+	return c.externalClient.Create(ctx, el.DeepCopy())
 }
 
 func (c *Controller) handleUpdateEvent(ctx context.Context, key string) error {
-	handler := c.funcs[objectAdd]
-	if handler == nil {
+	if c.externalClient == nil {
 		c.logger.Warn().
-			Str("eventType", string(objectUpdate)).
+			Str("eventType", string(Update)).
 			Str("key", key).
 			Msg("No event handler registered.")
 		return nil
@@ -107,7 +143,7 @@ func (c *Controller) handleUpdateEvent(ctx context.Context, key string) error {
 	}
 
 	el := obj.(*unstructured.Unstructured)
-	return handler(ctx, *el.DeepCopy())
+	return c.externalClient.Update(ctx, el.DeepCopy())
 }
 
 func (c *Controller) handleDeleteEvent(ctx context.Context, key string) error {
