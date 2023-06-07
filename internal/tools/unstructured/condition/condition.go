@@ -1,4 +1,4 @@
-package unstructured
+package condition
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,7 +32,7 @@ func Creating() metav1.Condition {
 	}
 }
 
-func CreatingFailed(reason string) metav1.Condition {
+func FailWithReason(reason string) metav1.Condition {
 	return metav1.Condition{
 		Type:               TypeReady,
 		Status:             metav1.ConditionFalse,
@@ -63,7 +63,7 @@ func Available() metav1.Condition {
 	}
 }
 
-func UpsertCondition(conds *[]metav1.Condition, co metav1.Condition) {
+func Upsert(conds *[]metav1.Condition, co metav1.Condition) {
 	for idx, el := range *conds {
 		if el.Type == co.Type {
 			(*conds)[idx] = co
@@ -73,13 +73,13 @@ func UpsertCondition(conds *[]metav1.Condition, co metav1.Condition) {
 	*conds = append(*conds, co)
 }
 
-func JoinConditions(conds *[]metav1.Condition, all []metav1.Condition) {
+func Join(conds *[]metav1.Condition, all []metav1.Condition) {
 	for _, el := range *conds {
-		UpsertCondition(conds, el)
+		Upsert(conds, el)
 	}
 }
 
-func RemoveCondition(conds *[]metav1.Condition, typ string) {
+func Remove(conds *[]metav1.Condition, typ string) {
 	for idx, el := range *conds {
 		if el.Type == typ {
 			*conds = append((*conds)[:idx], (*conds)[idx+1:]...)
@@ -88,6 +88,8 @@ func RemoveCondition(conds *[]metav1.Condition, typ string) {
 	}
 }
 
+/*
 type Status struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
+*/

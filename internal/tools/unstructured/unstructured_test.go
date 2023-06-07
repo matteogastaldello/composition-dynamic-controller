@@ -3,6 +3,7 @@ package unstructured
 import (
 	"testing"
 
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured/condition"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -14,7 +15,7 @@ func TestGetConditions(t *testing.T) {
 	all := GetConditions(un)
 	assert.Equal(t, 0, len(all))
 
-	err := SetCondition(un, Unavailable())
+	err := SetCondition(un, condition.Unavailable())
 	assert.Nil(t, err)
 
 	all = GetConditions(un)
@@ -28,7 +29,7 @@ func TestIsAvailable(t *testing.T) {
 	assert.Nil(t, err)
 	assert.True(t, ok)
 
-	err = SetCondition(un, Unavailable())
+	err = SetCondition(un, condition.Unavailable())
 	assert.Nil(t, err)
 
 	ok, err = IsAvailable(un)

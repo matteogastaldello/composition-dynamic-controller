@@ -8,6 +8,7 @@ import (
 
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/helmclient"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/helpers"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/meta"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools"
 
 	unstructuredtools "github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured/condition"
 )
 
 var (
@@ -121,12 +123,12 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 			return true, err
 		}
 
-		err = unstructuredtools.SetCondition(mg, unstructuredtools.Unavailable())
+		err = unstructuredtools.SetCondition(mg, condition.Unavailable())
 		if err != nil {
 			return true, err
 		}
 	} else {
-		err := unstructuredtools.SetCondition(mg, unstructuredtools.Available())
+		err := unstructuredtools.SetCondition(mg, condition.Available())
 		if err != nil {
 			return true, err
 		}
@@ -144,7 +146,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	// do is to refuse to proceed.
 	if meta.ExternalCreateIncomplete(mg) {
 		h.logger.Debug().Msg(errCreateIncomplete)
-		err := unstructuredtools.SetCondition(mg, unstructuredtools.Creating())
+		err := unstructuredtools.SetCondition(mg, condition.Creating())
 		if err != nil {
 			return err
 		}
@@ -183,7 +185,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	})
 	if err != nil {
 		meta.SetExternalCreateFailed(mg, time.Now())
-		unstructuredtools.SetCondition(mg, unstructuredtools.CreatingFailed(
+		unstructuredtools.SetCondition(mg, condition.FailWithReason(
 			fmt.Sprintf("Creating failed: %s", err.Error())))
 
 		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
@@ -204,11 +206,74 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 		Str("namespace", mg.GetNamespace()).
 		Msg("Handling resource update.")
 
-	return nil // NOOP
+		// If we started but never completed creation of an external resource we
+	// may have lost critical information.The safest thing to
+	// do is to refuse to proceed.
+	if meta.ExternalCreateIncomplete(mg) {
+		h.logger.Debug().Msg(errCreateIncomplete)
+		err := unstructuredtools.SetCondition(mg, condition.Creating())
+		if err != nil {
+			return err
+		}
+		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+			DiscoveryClient: h.discoveryClient,
+			DynamicClient:   h.dynamicClient,
+		})
+	}
+
+	meta.SetExternalCreatePending(mg, time.Now())
+	if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+		DiscoveryClient: h.discoveryClient,
+		DynamicClient:   h.dynamicClient,
+	}); err != nil {
+		return err
+	}
+
+	if h.packageInfoGetter == nil {
+		return fmt.Errorf("helm chart package info getter must be specified")
+	}
+
+	hc, err := h.helmClientForResource(mg)
+	if err != nil {
+		return err
+	}
+
+	pkg, err := h.packageInfoGetter.GetPackage(ctx)
+	if err != nil {
+		return err
+	}
+
+	return helmchart.Update(ctx, helmchart.UpdateOptions{
+		HelmClient: hc,
+		ChartName:  pkg.URL,
+		Resource:   mg,
+	})
 }
 
 func (h *handler) Delete(ctx context.Context, mg *unstructured.Unstructured) error {
-	return nil // NOOP
+	if h.packageInfoGetter == nil {
+		return fmt.Errorf("helm chart package info getter must be specified")
+	}
+
+	hc, err := h.helmClientForResource(mg)
+	if err != nil {
+		return err
+	}
+
+	pkg, err := h.packageInfoGetter.GetPackage(ctx)
+	if err != nil {
+		return err
+	}
+
+	chartSpec := helmclient.ChartSpec{
+		ReleaseName: mg.GetName(),
+		Namespace:   mg.GetNamespace(),
+		ChartName:   pkg.URL,
+		Version:     helpers.String(pkg.Version),
+		Wait:        true,
+	}
+
+	return hc.UninstallRelease(&chartSpec)
 }
 
 func (h *handler) helmClientForResource(mg *unstructured.Unstructured) (helmclient.Client, error) {

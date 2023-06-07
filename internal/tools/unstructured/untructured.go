@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured/condition"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -58,7 +59,7 @@ func IsAvailable(un *unstructured.Unstructured) (bool, error) {
 
 func SetCondition(un *unstructured.Unstructured, co metav1.Condition) error {
 	conds := GetConditions(un)
-	UpsertCondition(&conds, co)
+	condition.Upsert(&conds, co)
 
 	res, err := encodeStruct(conds)
 	if err != nil {
