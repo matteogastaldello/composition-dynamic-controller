@@ -59,11 +59,11 @@ type handler struct {
 }
 
 func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (bool, error) {
-	h.logger.Debug().Str("apiVersion", mg.GetAPIVersion()).
+	log := h.logger.With().
+		Str("apiVersion", mg.GetAPIVersion()).
 		Str("kind", mg.GetKind()).
 		Str("name", mg.GetName()).
-		Str("namespace", mg.GetNamespace()).
-		Msg("Observing resource")
+		Str("namespace", mg.GetNamespace()).Logger()
 
 	if h.packageInfoGetter == nil {
 		return false, fmt.Errorf("helm chart package info getter must be specified")
@@ -81,7 +81,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		}
 	}
 	if rel == nil {
-		h.logger.Debug().Str("release", mg.GetName()).Msg("Release not found.")
+		log.Debug().Msg("Composition package not installed.")
 		return false, nil
 	}
 
@@ -89,7 +89,6 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	if err != nil {
 		return false, err
 	}
-	h.logger.Debug().Str("release", mg.GetName()).Str("chart", pkg.URL).Msg("Package info fetched.")
 
 	all, err := helmchart.RenderTemplate(ctx, helmchart.RenderTemplateOptions{
 		HelmClient: hc,
@@ -103,35 +102,47 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		return true, nil
 	}
 
-	ref, err := helmchart.CheckObjects(ctx, all, helmchart.CheckObjectsOptions{
+	log.Debug().Str("package", pkg.URL).Msg("Checking composition resources.")
+
+	opts := helmchart.CheckResourceOptions{
 		DynamicClient:   h.dynamicClient,
 		DiscoveryClient: h.discoveryClient,
-	})
-	if err != nil {
-		return false, err
 	}
 
-	if ref != nil {
-		h.logger.Warn().Str("apiVersion", ref.APIVersion).
-			Str("kind", ref.Kind).
-			Str("name", ref.Name).
-			Str("namespace", ref.Namespace).
-			Msg("Founc composition failing object reference.")
+	for _, el := range all {
+		log.Debug().Str("package", pkg.URL).Msgf("Checking for resource %s.", el.String())
 
-		err := unstructuredtools.SetFailedObjectRef(mg, ref)
+		ref, err := helmchart.CheckResource(ctx, el, opts)
 		if err != nil {
-			return true, err
-		}
+			if ref == nil {
+				return true, err
+			}
 
-		err = unstructuredtools.SetCondition(mg, condition.Unavailable())
-		if err != nil {
-			return true, err
+			log.Warn().Err(err).
+				Str("package", pkg.URL).
+				Msgf("Composition not ready due to: %s.", ref.String())
+
+			err := unstructuredtools.SetFailedObjectRef(mg, ref)
+			if err != nil {
+				return true, err
+			}
+
+			err = unstructuredtools.SetCondition(mg, condition.Unavailable())
+			if err != nil {
+				return true, err
+			}
+
+			return true, tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+				DiscoveryClient: h.discoveryClient,
+				DynamicClient:   h.dynamicClient,
+			})
 		}
-	} else {
-		err := unstructuredtools.SetCondition(mg, condition.Available())
-		if err != nil {
-			return true, err
-		}
+	}
+
+	log.Debug().Str("package", pkg.URL).Msg("Composition ready.")
+	err = unstructuredtools.SetCondition(mg, condition.Available())
+	if err != nil {
+		return true, err
 	}
 
 	return true, tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
@@ -141,11 +152,17 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 }
 
 func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) error {
+	log := h.logger.With().
+		Str("apiVersion", mg.GetAPIVersion()).
+		Str("kind", mg.GetKind()).
+		Str("name", mg.GetName()).
+		Str("namespace", mg.GetNamespace()).Logger()
+
 	// If we started but never completed creation of an external resource we
 	// may have lost critical information.The safest thing to
 	// do is to refuse to proceed.
 	if meta.ExternalCreateIncomplete(mg) {
-		h.logger.Debug().Msg(errCreateIncomplete)
+		log.Warn().Msg(errCreateIncomplete)
 		err := unstructuredtools.SetCondition(mg, condition.Creating())
 		if err != nil {
 			return err
@@ -178,7 +195,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		return err
 	}
 
-	_, gen, err := helmchart.Install(ctx, helmchart.InstallOptions{
+	_, _, err = helmchart.Install(ctx, helmchart.InstallOptions{
 		HelmClient: hc,
 		ChartName:  pkg.URL,
 		Resource:   mg,
@@ -194,23 +211,25 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		})
 	}
 
-	// TODO add gen to CRD generator
-	h.logger.Debug().Msgf("generation: %d", gen)
+	log.Debug().Str("package", pkg.URL).Msg("Installing composition package.")
+
 	return nil
 }
 
 func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) error {
-	h.logger.Debug().Str("apiVersion", mg.GetAPIVersion()).
+	log := h.logger.With().
+		Str("apiVersion", mg.GetAPIVersion()).
 		Str("kind", mg.GetKind()).
 		Str("name", mg.GetName()).
-		Str("namespace", mg.GetNamespace()).
-		Msg("Handling resource update.")
+		Str("namespace", mg.GetNamespace()).Logger()
 
-		// If we started but never completed creation of an external resource we
+	log.Debug().Msg("Handling composition values update.")
+
+	// If we started but never completed creation of an external resource we
 	// may have lost critical information.The safest thing to
 	// do is to refuse to proceed.
 	if meta.ExternalCreateIncomplete(mg) {
-		h.logger.Debug().Msg(errCreateIncomplete)
+		log.Warn().Msg(errCreateIncomplete)
 		err := unstructuredtools.SetCondition(mg, condition.Creating())
 		if err != nil {
 			return err
@@ -243,11 +262,18 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 		return err
 	}
 
-	return helmchart.Update(ctx, helmchart.UpdateOptions{
+	err = helmchart.Update(ctx, helmchart.UpdateOptions{
 		HelmClient: hc,
 		ChartName:  pkg.URL,
 		Resource:   mg,
 	})
+	if err != nil {
+		return err
+	}
+
+	log.Debug().Str("package", pkg.URL).Msg("Composition values updated.")
+
+	return nil
 }
 
 func (h *handler) Delete(ctx context.Context, mg *unstructured.Unstructured) error {
@@ -273,10 +299,28 @@ func (h *handler) Delete(ctx context.Context, mg *unstructured.Unstructured) err
 		Wait:        true,
 	}
 
-	return hc.UninstallRelease(&chartSpec)
+	err = hc.UninstallRelease(&chartSpec)
+	if err != nil {
+		return err
+	}
+
+	h.logger.Debug().Str("apiVersion", mg.GetAPIVersion()).
+		Str("kind", mg.GetKind()).
+		Str("name", mg.GetName()).
+		Str("namespace", mg.GetNamespace()).
+		Str("package", pkg.URL).
+		Msg("Composition package removed.")
+
+	return nil
 }
 
 func (h *handler) helmClientForResource(mg *unstructured.Unstructured) (helmclient.Client, error) {
+	log := h.logger.With().
+		Str("apiVersion", mg.GetAPIVersion()).
+		Str("kind", mg.GetKind()).
+		Str("name", mg.GetName()).
+		Str("namespace", mg.GetNamespace()).Logger()
+
 	opts := &helmclient.Options{
 		Namespace:        mg.GetNamespace(),
 		RepositoryCache:  "/tmp/.helmcache",
@@ -287,10 +331,11 @@ func (h *handler) helmClientForResource(mg *unstructured.Unstructured) (helmclie
 			if !meta.IsVerbose(mg) {
 				return
 			}
+
 			if len(v) > 0 {
-				h.logger.Debug().Msgf(format, v)
+				log.Debug().Msgf(format, v)
 			} else {
-				h.logger.Debug().Msg(format)
+				log.Debug().Msg(format)
 			}
 		},
 	}

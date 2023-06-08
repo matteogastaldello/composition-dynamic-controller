@@ -147,6 +147,25 @@ func (c *Controller) handleUpdateEvent(ctx context.Context, key string) error {
 }
 
 func (c *Controller) handleDeleteEvent(ctx context.Context, key string) error {
-	c.logger.Debug().Str("key", key).Msg("Deleted.")
-	return nil // NOOP
+	if c.externalClient == nil {
+		c.logger.Warn().
+			Str("eventType", string(Delete)).
+			Str("key", key).
+			Msg("No event handler registered.")
+		return nil
+	}
+
+	obj, exists, err := c.indexer.GetByKey(key)
+	if err != nil {
+		c.logger.Error().Str("key", key).Err(err).Msg("Fetching object.")
+		return err
+	}
+
+	if !exists {
+		c.logger.Warn().Str("key", key).Msg("Object does not exists anymore.")
+		return nil
+	}
+
+	el := obj.(*unstructured.Unstructured)
+	return c.externalClient.Delete(ctx, el.DeepCopy())
 }

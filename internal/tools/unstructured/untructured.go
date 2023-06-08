@@ -17,6 +17,10 @@ type ObjectRef struct {
 	Namespace  string `json:"namespace"`
 }
 
+func (o *ObjectRef) String() string {
+	return fmt.Sprintf("%s.%s as %s@%s", o.APIVersion, o.Kind, o.Name, o.Namespace)
+}
+
 type NotAvailableError struct {
 	FailedObjectRef *ObjectRef
 	Err             error
@@ -49,6 +53,7 @@ func IsAvailable(un *unstructured.Unstructured) (bool, error) {
 						Name:       un.GetName(),
 						Namespace:  un.GetNamespace(),
 					},
+					Err: fmt.Errorf(co.Reason),
 				}
 			}
 		}

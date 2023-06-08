@@ -143,45 +143,32 @@ func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]unstruct
 	return all, nil
 }
 
-type CheckObjectsOptions struct {
+type CheckResourceOptions struct {
 	DynamicClient   dynamic.Interface
 	DiscoveryClient *discovery.DiscoveryClient
 }
 
-func CheckObjects(ctx context.Context, objects []unstructuredtools.ObjectRef, opts CheckObjectsOptions) (*unstructuredtools.ObjectRef, error) {
-	for _, el := range objects {
-		gvr, err := tools.GVKtoGVR(opts.DiscoveryClient, schema.FromAPIVersionAndKind(el.APIVersion, el.Kind))
-		if err != nil {
-			return nil, err
-		}
-
-		un, err := opts.DynamicClient.Resource(gvr).
-			Namespace(el.Namespace).
-			Get(ctx, el.Name, metav1.GetOptions{})
-		if err != nil {
-			return nil, err
-		}
-
-		ok, err := unstructuredtools.IsAvailable(un)
-		if err != nil {
-			if ex, ok := err.(*unstructuredtools.NotAvailableError); ok {
-				return ex.FailedObjectRef, nil
-			}
-			return nil, err
-		}
-		if ok {
-			continue
-		}
-
-		return &unstructuredtools.ObjectRef{
-			APIVersion: el.APIVersion,
-			Kind:       el.Kind,
-			Name:       el.Name,
-			Namespace:  el.Namespace,
-		}, nil
+func CheckResource(ctx context.Context, ref unstructuredtools.ObjectRef, opts CheckResourceOptions) (*unstructuredtools.ObjectRef, error) {
+	gvr, err := tools.GVKtoGVR(opts.DiscoveryClient, schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, nil
+	un, err := opts.DynamicClient.Resource(gvr).
+		Namespace(ref.Namespace).
+		Get(ctx, ref.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = unstructuredtools.IsAvailable(un)
+	if err != nil {
+		if ex, ok := err.(*unstructuredtools.NotAvailableError); ok {
+			return ex.FailedObjectRef, ex.Err
+		}
+	}
+
+	return nil, err
 }
 
 func FindRelease(hc helmclient.Client, name string) (*release.Release, error) {
