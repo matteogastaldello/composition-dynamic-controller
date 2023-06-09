@@ -5,24 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured/condition"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-type ObjectRef struct {
-	APIVersion string `json:"apiVersion"`
-	Kind       string `json:"kind"`
-	Name       string `json:"name"`
-	Namespace  string `json:"namespace"`
-}
-
-func (o *ObjectRef) String() string {
-	return fmt.Sprintf("%s.%s as %s@%s", o.APIVersion, o.Kind, o.Name, o.Namespace)
-}
-
 type NotAvailableError struct {
-	FailedObjectRef *ObjectRef
+	FailedObjectRef *controller.ObjectRef
 	Err             error
 }
 
@@ -47,7 +37,7 @@ func IsAvailable(un *unstructured.Unstructured) (bool, error) {
 		if has(positives, string(co.Type)) {
 			if string(co.Status) != "True" {
 				return false, &NotAvailableError{
-					FailedObjectRef: &ObjectRef{
+					FailedObjectRef: &controller.ObjectRef{
 						APIVersion: un.GetAPIVersion(),
 						Kind:       un.GetKind(),
 						Name:       un.GetName(),
@@ -102,7 +92,7 @@ func GetConditions(un *unstructured.Unstructured) []metav1.Condition {
 	return x
 }
 
-func SetFailedObjectRef(un *unstructured.Unstructured, ref *ObjectRef) error {
+func SetFailedObjectRef(un *unstructured.Unstructured, ref *controller.ObjectRef) error {
 	return setNestedFieldNoCopy(un, map[string]interface{}{
 		"apiVersion": ref.APIVersion,
 		"kind":       ref.Kind,
@@ -111,7 +101,7 @@ func SetFailedObjectRef(un *unstructured.Unstructured, ref *ObjectRef) error {
 	}, "status", "failedObjectRef")
 }
 
-func ExtractFailedObjectRef(un *unstructured.Unstructured) (*ObjectRef, error) {
+func ExtractFailedObjectRef(un *unstructured.Unstructured) (*controller.ObjectRef, error) {
 	obj, ok, err := unstructured.NestedFieldNoCopy(un.Object, "status", "failedObjectRef")
 	if err != nil {
 		return nil, err
@@ -125,7 +115,7 @@ func ExtractFailedObjectRef(un *unstructured.Unstructured) (*ObjectRef, error) {
 		return nil, err
 	}
 
-	ref := &ObjectRef{}
+	ref := &controller.ObjectRef{}
 	err = json.Unmarshal(dat, ref)
 	return ref, err
 }

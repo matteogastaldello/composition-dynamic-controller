@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gertd/go-pluralize"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/helmclient"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/text"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools"
@@ -96,7 +97,7 @@ type RenderTemplateOptions struct {
 	Resource   *unstructured.Unstructured
 }
 
-func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]unstructuredtools.ObjectRef, error) {
+func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]controller.ObjectRef, error) {
 	dat, err := ExtractValuesFromSpec(opts.Resource)
 	if err != nil {
 		return nil, err
@@ -114,7 +115,7 @@ func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]unstruct
 		return nil, err
 	}
 
-	all := []unstructuredtools.ObjectRef{}
+	all := []controller.ObjectRef{}
 
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	for _, spec := range strings.Split(string(tpl), "---") {
@@ -132,7 +133,7 @@ func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]unstruct
 		}
 
 		apiVersion, kind := gvk.ToAPIVersionAndKind()
-		all = append(all, unstructuredtools.ObjectRef{
+		all = append(all, controller.ObjectRef{
 			APIVersion: apiVersion,
 			Kind:       kind,
 			Name:       el.GetName(),
@@ -148,7 +149,7 @@ type CheckResourceOptions struct {
 	DiscoveryClient *discovery.DiscoveryClient
 }
 
-func CheckResource(ctx context.Context, ref unstructuredtools.ObjectRef, opts CheckResourceOptions) (*unstructuredtools.ObjectRef, error) {
+func CheckResource(ctx context.Context, ref controller.ObjectRef, opts CheckResourceOptions) (*controller.ObjectRef, error) {
 	gvr, err := tools.GVKtoGVR(opts.DiscoveryClient, schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
 	if err != nil {
 		return nil, err

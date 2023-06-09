@@ -3,7 +3,10 @@ package controller
 import (
 	"context"
 
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/runtime"
 )
 
@@ -48,42 +51,38 @@ func (c *Controller) processItem(ctx context.Context, obj interface{}) error {
 		c.logger.Error().Msgf("unexpected event: %v", obj)
 		return nil
 	}
+
 	switch evt.eventType {
 	case Observe:
-		return c.handleObserve(ctx, evt.objKey)
+		return c.handleObserve(ctx, evt.objectRef)
 	case Create:
-		return c.handleCreate(ctx, evt.objKey)
+		return c.handleCreate(ctx, evt.objectRef)
 	case Update:
-		return c.handleUpdateEvent(ctx, evt.objKey)
+		return c.handleUpdateEvent(ctx, evt.objectRef)
 	case Delete:
-		return c.handleDeleteEvent(ctx, evt.objKey)
-	default:
-		return nil
+		return c.handleDeleteEvent(ctx, evt.objectRef)
 	}
+
+	return nil
 }
 
-func (c *Controller) handleObserve(ctx context.Context, key string) error {
+func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 	if c.externalClient == nil {
 		c.logger.Warn().
 			Str("eventType", string(Observe)).
-			Str("key", key).
 			Msg("No event handler registered.")
 		return nil
 	}
 
-	obj, exists, err := c.indexer.GetByKey(key)
+	el, err := c.fetch(ctx, ref)
 	if err != nil {
-		c.logger.Error().Str("key", key).Err(err).Msg("Fetching object.")
+		c.logger.Err(err).
+			Str("objectRef", ref.String()).
+			Msg("Resolving unstructured object.")
 		return err
 	}
 
-	if !exists {
-		c.logger.Warn().Str("key", key).Msg("Object does not exists anymore.")
-		return nil
-	}
-
-	el := obj.(*unstructured.Unstructured)
-	exists, err = c.externalClient.Observe(ctx, el.DeepCopy())
+	exists, err := c.externalClient.Observe(ctx, el.DeepCopy())
 	if err != nil {
 		return err
 	}
@@ -91,81 +90,74 @@ func (c *Controller) handleObserve(ctx context.Context, key string) error {
 	if !exists {
 		c.queue.Add(event{
 			eventType: Create,
-			objKey:    key,
+			objectRef: ObjectRef{
+				APIVersion: el.GetAPIVersion(),
+				Kind:       el.GetKind(),
+				Name:       el.GetName(),
+				Namespace:  el.GetNamespace(),
+			},
 		})
 	}
 
 	return nil
 }
 
-func (c *Controller) handleCreate(ctx context.Context, key string) error {
+func (c *Controller) handleCreate(ctx context.Context, ref ObjectRef) error {
 	if c.externalClient == nil {
 		c.logger.Warn().
 			Str("eventType", string(Create)).
-			Str("key", key).
 			Msg("No event handler registered.")
 		return nil
 	}
 
-	obj, exists, err := c.indexer.GetByKey(key)
+	el, err := c.fetch(ctx, ref)
 	if err != nil {
-		c.logger.Error().Str("key", key).Err(err).Msg("Fetching object.")
+		c.logger.Err(err).
+			Str("objectRef", ref.String()).
+			Msg("Resolving unstructured object.")
 		return err
 	}
 
-	if !exists {
-		c.logger.Warn().Str("key", key).Msg("Object does not exists anymore.")
-		return nil
-	}
-
-	el := obj.(*unstructured.Unstructured)
 	return c.externalClient.Create(ctx, el.DeepCopy())
 }
 
-func (c *Controller) handleUpdateEvent(ctx context.Context, key string) error {
+func (c *Controller) handleUpdateEvent(ctx context.Context, ref ObjectRef) error {
 	if c.externalClient == nil {
 		c.logger.Warn().
 			Str("eventType", string(Update)).
-			Str("key", key).
 			Msg("No event handler registered.")
 		return nil
 	}
 
-	obj, exists, err := c.indexer.GetByKey(key)
+	el, err := c.fetch(ctx, ref)
 	if err != nil {
-		c.logger.Error().Str("key", key).Err(err).Msg("Fetching object.")
+		c.logger.Err(err).
+			Str("objectRef", ref.String()).
+			Msg("Resolving unstructured object.")
 		return err
 	}
 
-	if !exists {
-		c.logger.Warn().Str("key", key).Msg("Object does not exists anymore.")
-		return nil
-	}
-
-	el := obj.(*unstructured.Unstructured)
 	return c.externalClient.Update(ctx, el.DeepCopy())
 }
 
-func (c *Controller) handleDeleteEvent(ctx context.Context, key string) error {
+func (c *Controller) handleDeleteEvent(ctx context.Context, ref ObjectRef) error {
 	if c.externalClient == nil {
 		c.logger.Warn().
 			Str("eventType", string(Delete)).
-			Str("key", key).
 			Msg("No event handler registered.")
 		return nil
 	}
 
-	obj, exists, err := c.indexer.GetByKey(key)
+	return c.externalClient.Delete(ctx, ref)
+}
+
+func (c *Controller) fetch(ctx context.Context, ref ObjectRef) (*unstructured.Unstructured, error) {
+	gvr, err := tools.GVKtoGVR(c.discoveryClient, schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
 	if err != nil {
-		c.logger.Error().Str("key", key).Err(err).Msg("Fetching object.")
-		return err
+		return nil, err
 	}
 
-	if !exists {
-		c.logger.Warn().Str("key", key).Msg("Object does not exists anymore.")
-		return nil
-	}
-
-	el := obj.(*unstructured.Unstructured)
-	return c.externalClient.Delete(ctx, el.DeepCopy())
+	return c.dynamicClient.Resource(gvr).
+		Namespace(ref.Namespace).
+		Get(ctx, ref.Name, metav1.GetOptions{})
 }

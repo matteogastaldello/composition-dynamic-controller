@@ -61,24 +61,23 @@ func New(opts Options) *Controller {
 		opts.ResyncInterval,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				key, err := cache.MetaNamespaceKeyFunc(obj)
-				if err != nil {
-					opts.Logger.Warn().Err(err).Msg("Getting meta namespace key.")
+				el, ok := obj.(*unstructured.Unstructured)
+				if !ok {
+					opts.Logger.Warn().Msg("AddFunc: object is not an unstructured.")
 					return
 				}
 
 				queue.Add(event{
 					eventType: Observe,
-					objKey:    key,
+					objectRef: ObjectRef{
+						APIVersion: el.GetAPIVersion(),
+						Kind:       el.GetKind(),
+						Name:       el.GetName(),
+						Namespace:  el.GetNamespace(),
+					},
 				})
 			},
 			UpdateFunc: func(old, new interface{}) {
-				key, err := cache.MetaNamespaceKeyFunc(new)
-				if err != nil {
-					opts.Logger.Warn().Err(err).Msg("Getting meta namespace key.")
-					return
-				}
-
 				oldUns, ok := old.(*unstructured.Unstructured)
 				if !ok {
 					opts.Logger.Warn().Msg("UpdateFunc: object is not an unstructured.")
@@ -94,24 +93,42 @@ func New(opts Options) *Controller {
 				if oldUns.GetGeneration() == newUns.GetGeneration() {
 					queue.Add(event{
 						eventType: Observe,
-						objKey:    key,
+						objectRef: ObjectRef{
+							APIVersion: newUns.GetAPIVersion(),
+							Kind:       newUns.GetKind(),
+							Name:       newUns.GetName(),
+							Namespace:  newUns.GetNamespace(),
+						},
 					})
 					return
 				}
 
 				queue.Add(event{
 					eventType: Update,
-					objKey:    key,
+					objectRef: ObjectRef{
+						APIVersion: newUns.GetAPIVersion(),
+						Kind:       newUns.GetKind(),
+						Name:       newUns.GetName(),
+						Namespace:  newUns.GetNamespace(),
+					},
 				})
 			},
 			DeleteFunc: func(obj interface{}) {
-				key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-				if err == nil {
-					queue.Add(event{
-						eventType: Delete,
-						objKey:    key,
-					})
+				el, ok := obj.(*unstructured.Unstructured)
+				if !ok {
+					opts.Logger.Warn().Msg("DeleteFunc: object is not an unstructured.")
+					return
 				}
+
+				queue.Add(event{
+					eventType: Delete,
+					objectRef: ObjectRef{
+						APIVersion: el.GetAPIVersion(),
+						Kind:       el.GetKind(),
+						Name:       el.GetName(),
+						Namespace:  el.GetNamespace(),
+					},
+				})
 			},
 		},
 		cache.Indexers{},

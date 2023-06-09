@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -15,9 +16,20 @@ const (
 	Delete  EventType = "Delete"
 )
 
+type ObjectRef struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	Namespace  string `json:"namespace"`
+}
+
+func (o *ObjectRef) String() string {
+	return fmt.Sprintf("%s.%s as %s@%s", o.APIVersion, o.Kind, o.Name, o.Namespace)
+}
+
 type event struct {
 	eventType EventType
-	objKey    string
+	objectRef ObjectRef
 }
 
 // An ExternalClient manages the lifecycle of an external resource.
@@ -29,7 +41,7 @@ type ExternalClient interface {
 	Observe(ctx context.Context, mg *unstructured.Unstructured) (bool, error)
 	Create(ctx context.Context, mg *unstructured.Unstructured) error
 	Update(ctx context.Context, mg *unstructured.Unstructured) error
-	Delete(ctx context.Context, mg *unstructured.Unstructured) error
+	Delete(ctx context.Context, ref ObjectRef) error
 }
 
 // An ExternalObservation is the result of an observation of an external resource.

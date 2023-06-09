@@ -276,12 +276,18 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 	return nil
 }
 
-func (h *handler) Delete(ctx context.Context, mg *unstructured.Unstructured) error {
+func (h *handler) Delete(ctx context.Context, ref controller.ObjectRef) error {
 	if h.packageInfoGetter == nil {
 		return fmt.Errorf("helm chart package info getter must be specified")
 	}
 
-	hc, err := h.helmClientForResource(mg)
+	mg := unstructured.Unstructured{}
+	mg.SetAPIVersion(ref.APIVersion)
+	mg.SetKind(ref.Kind)
+	mg.SetName(ref.Name)
+	mg.SetNamespace(ref.Namespace)
+
+	hc, err := h.helmClientForResource(&mg)
 	if err != nil {
 		return err
 	}
@@ -297,6 +303,7 @@ func (h *handler) Delete(ctx context.Context, mg *unstructured.Unstructured) err
 		ChartName:   pkg.URL,
 		Version:     helpers.String(pkg.Version),
 		Wait:        true,
+		Timeout:     time.Minute * 3,
 	}
 
 	err = hc.UninstallRelease(&chartSpec)

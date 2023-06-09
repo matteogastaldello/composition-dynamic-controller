@@ -3,6 +3,7 @@ package unstructured
 import (
 	"testing"
 
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured/condition"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -49,7 +50,7 @@ func TestFailedObjectRef(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Nil(t, ref)
 
-	want := &ObjectRef{
+	want := &controller.ObjectRef{
 		APIVersion: "test.example.org",
 		Kind:       "Test",
 		Name:       "test",
