@@ -12,6 +12,7 @@ import (
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/composition"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/eventrecorder"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/shortid"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/support"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart"
 	"github.com/rs/zerolog"
@@ -112,7 +113,11 @@ func main() {
 		Str("resource", *resourceName).
 		Msgf("Starting %s.", serviceName)
 
-	ctrl := controller.New(controller.Options{
+	sid, err := shortid.New(1, shortid.DefaultABC, 2342)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Creating shortid generator.")
+	}
+	ctrl := controller.New(sid, controller.Options{
 		Client:          dyn,
 		DiscoveryClient: dis,
 		ResyncInterval:  *resyncInterval,

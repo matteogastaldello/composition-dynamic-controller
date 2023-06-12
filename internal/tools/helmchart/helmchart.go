@@ -1,6 +1,7 @@
 package helmchart
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -18,11 +19,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/kubectl/pkg/scheme"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/yaml"
+	sigsyaml "sigs.k8s.io/yaml"
+
+	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 )
 
 type PackageInfo struct {
@@ -88,7 +91,7 @@ func ExtractValuesFromSpec(un *unstructured.Unstructured) ([]byte, error) {
 		return nil, nil
 	}
 
-	return yaml.Marshal(spec)
+	return sigsyaml.Marshal(spec)
 }
 
 type RenderTemplateOptions struct {
@@ -117,18 +120,35 @@ func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]controll
 
 	all := []controller.ObjectRef{}
 
-	decode := scheme.Codecs.UniversalDeserializer().Decode
 	for _, spec := range strings.Split(string(tpl), "---") {
 		if len(spec) == 0 {
 			continue
 		}
-		obj, gvk, err := decode([]byte(spec), nil, nil)
+
+		decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader([]byte(spec)), 100)
+
+		var rawObj runtime.RawExtension
+		if err = decoder.Decode(&rawObj); err != nil {
+			return all, err
+		}
+
+		obj, gvk, err := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme).Decode(rawObj.Raw, nil, nil)
 		if err != nil {
 			return all, err
 		}
 
-		el, ok := obj.(object)
-		if !ok {
+		unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+		if err != nil {
+			return all, err
+		}
+
+		unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
+		if unstructuredObj.GetNamespace() == "" {
+			unstructuredObj.SetNamespace(opts.Resource.GetNamespace())
+		}
+
+		_, ok, err := unstructured.NestedString(unstructuredMap, "metadata", "annotations", "helm.sh/hook")
+		if ok || err != nil {
 			continue
 		}
 
@@ -136,8 +156,8 @@ func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]controll
 		all = append(all, controller.ObjectRef{
 			APIVersion: apiVersion,
 			Kind:       kind,
-			Name:       el.GetName(),
-			Namespace:  el.GetNamespace(),
+			Name:       unstructuredObj.GetName(),
+			Namespace:  unstructuredObj.GetNamespace(),
 		})
 	}
 
@@ -187,9 +207,4 @@ func FindRelease(hc helmclient.Client, name string) (*release.Release, error) {
 	}
 
 	return res, nil
-}
-
-type object interface {
-	metav1.Object
-	runtime.Object
 }

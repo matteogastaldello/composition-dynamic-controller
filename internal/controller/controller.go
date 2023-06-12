@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/listwatcher"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/shortid"
 	"github.com/rs/zerolog"
 	"golang.org/x/time/rate"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -42,7 +43,8 @@ type Controller struct {
 }
 
 // New creates a new Controller.
-func New(opts Options) *Controller {
+func New(sid *shortid.Shortid, opts Options) *Controller {
+
 	rateLimiter := workqueue.NewMaxOfRateLimiter(
 		workqueue.NewItemExponentialFailureRateLimiter(3*time.Second, 180*time.Second),
 		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
@@ -67,7 +69,14 @@ func New(opts Options) *Controller {
 					return
 				}
 
+				id, err := sid.Generate()
+				if err != nil {
+					opts.Logger.Error().Err(err).Msg("AddFunc: generating short id.")
+					return
+				}
+
 				queue.Add(event{
+					id:        id,
 					eventType: Observe,
 					objectRef: ObjectRef{
 						APIVersion: el.GetAPIVersion(),
@@ -90,8 +99,15 @@ func New(opts Options) *Controller {
 					return
 				}
 
+				id, err := sid.Generate()
+				if err != nil {
+					opts.Logger.Error().Err(err).Msg("UpdateFunc: generating short id.")
+					return
+				}
+
 				if oldUns.GetGeneration() == newUns.GetGeneration() {
 					queue.Add(event{
+						id:        id,
 						eventType: Observe,
 						objectRef: ObjectRef{
 							APIVersion: newUns.GetAPIVersion(),
@@ -104,6 +120,7 @@ func New(opts Options) *Controller {
 				}
 
 				queue.Add(event{
+					id:        id,
 					eventType: Update,
 					objectRef: ObjectRef{
 						APIVersion: newUns.GetAPIVersion(),
@@ -120,7 +137,14 @@ func New(opts Options) *Controller {
 					return
 				}
 
+				id, err := sid.Generate()
+				if err != nil {
+					opts.Logger.Error().Err(err).Msg("UpdateFunc: generating short id.")
+					return
+				}
+
 				queue.Add(event{
+					id:        id,
 					eventType: Delete,
 					objectRef: ObjectRef{
 						APIVersion: el.GetAPIVersion(),

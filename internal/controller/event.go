@@ -28,6 +28,7 @@ func (o *ObjectRef) String() string {
 }
 
 type event struct {
+	id        string
 	eventType EventType
 	objectRef ObjectRef
 }

@@ -51,7 +51,7 @@ kind-down: ## shuts down the KinD cluster
 
 
 demo:
-	@$(KUBECTL) apply -f testdata/krateo.io_dummycharts.yaml
+	@$(KUBECTL) apply -f testdata/krateo-composition-demo-charts.yaml
 	@$(KUBECTL) create namespace demo-system || true
 	go run main.go
 

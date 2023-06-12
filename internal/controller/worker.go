@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	maxRetries = 3
+	maxRetries = 5
 )
 
 func (c *Controller) runWorker(ctx context.Context) {
@@ -20,7 +20,6 @@ func (c *Controller) runWorker(ctx context.Context) {
 		if shutdown {
 			break
 		}
-
 		defer c.queue.Done(obj)
 
 		err := c.processItem(ctx, obj)
@@ -52,18 +51,17 @@ func (c *Controller) processItem(ctx context.Context, obj interface{}) error {
 		return nil
 	}
 
+	c.logger.Debug().Str("event", string(evt.eventType)).Str("ref", evt.objectRef.String()).Msg("processing")
 	switch evt.eventType {
-	case Observe:
-		return c.handleObserve(ctx, evt.objectRef)
 	case Create:
 		return c.handleCreate(ctx, evt.objectRef)
 	case Update:
 		return c.handleUpdateEvent(ctx, evt.objectRef)
 	case Delete:
 		return c.handleDeleteEvent(ctx, evt.objectRef)
+	default:
+		return c.handleObserve(ctx, evt.objectRef)
 	}
-
-	return nil
 }
 
 func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
@@ -82,22 +80,18 @@ func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 		return err
 	}
 
-	exists, err := c.externalClient.Observe(ctx, el.DeepCopy())
+	_, err = c.externalClient.Observe(ctx, el.DeepCopy())
 	if err != nil {
 		return err
 	}
 
-	if !exists {
-		c.queue.Add(event{
-			eventType: Create,
-			objectRef: ObjectRef{
-				APIVersion: el.GetAPIVersion(),
-				Kind:       el.GetKind(),
-				Name:       el.GetName(),
-				Namespace:  el.GetNamespace(),
-			},
-		})
-	}
+	/*
+		if !exists {
+			c.queue.Add(event{
+				eventType: Create,
+				objectRef: ref,
+			})
+		}*/
 
 	return nil
 }
