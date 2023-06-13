@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -80,18 +81,25 @@ func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 		return err
 	}
 
-	_, err = c.externalClient.Observe(ctx, el.DeepCopy())
+	exists, err := c.externalClient.Observe(ctx, el.DeepCopy())
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			c.queue.Add(event{
+				eventType: Update,
+				objectRef: ref,
+			})
+			return nil
+		}
+
 		return err
 	}
 
-	/*
-		if !exists {
-			c.queue.Add(event{
-				eventType: Create,
-				objectRef: ref,
-			})
-		}*/
+	if !exists {
+		c.queue.Add(event{
+			eventType: Create,
+			objectRef: ref,
+		})
+	}
 
 	return nil
 }

@@ -44,7 +44,6 @@ type Controller struct {
 
 // New creates a new Controller.
 func New(sid *shortid.Shortid, opts Options) *Controller {
-
 	rateLimiter := workqueue.NewMaxOfRateLimiter(
 		workqueue.NewItemExponentialFailureRateLimiter(3*time.Second, 180*time.Second),
 		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)

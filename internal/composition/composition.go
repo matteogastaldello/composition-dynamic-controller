@@ -11,10 +11,12 @@ import (
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/helpers"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/meta"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart/archive"
 
 	"github.com/rs/zerolog"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -32,7 +34,7 @@ var (
 
 var _ controller.ExternalClient = (*handler)(nil)
 
-func NewHandler(cfg *rest.Config, log *zerolog.Logger, pig helmchart.PackageInfoGetter) controller.ExternalClient {
+func NewHandler(cfg *rest.Config, log *zerolog.Logger, pig archive.Getter) controller.ExternalClient {
 	dyn, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Creating dynamic client.")
@@ -55,7 +57,7 @@ type handler struct {
 	logger            *zerolog.Logger
 	dynamicClient     dynamic.Interface
 	discoveryClient   *discovery.DiscoveryClient
-	packageInfoGetter helmchart.PackageInfoGetter
+	packageInfoGetter archive.Getter
 }
 
 func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (bool, error) {
@@ -85,7 +87,9 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		return false, nil
 	}
 
-	pkg, err := h.packageInfoGetter.GetPackage(ctx)
+	pkg, err := h.packageInfoGetter.Get(
+		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
+		mg.GetName(), mg.GetNamespace())
 	if err != nil {
 		return false, err
 	}
@@ -190,7 +194,9 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		return err
 	}
 
-	pkg, err := h.packageInfoGetter.GetPackage(ctx)
+	pkg, err := h.packageInfoGetter.Get(
+		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
+		mg.GetName(), mg.GetNamespace())
 	if err != nil {
 		return err
 	}
@@ -257,7 +263,9 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 		return err
 	}
 
-	pkg, err := h.packageInfoGetter.GetPackage(ctx)
+	pkg, err := h.packageInfoGetter.Get(
+		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
+		mg.GetName(), mg.GetNamespace())
 	if err != nil {
 		return err
 	}
@@ -292,7 +300,9 @@ func (h *handler) Delete(ctx context.Context, ref controller.ObjectRef) error {
 		return err
 	}
 
-	pkg, err := h.packageInfoGetter.GetPackage(ctx)
+	pkg, err := h.packageInfoGetter.Get(
+		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
+		mg.GetName(), mg.GetNamespace())
 	if err != nil {
 		return err
 	}

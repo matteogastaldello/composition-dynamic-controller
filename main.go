@@ -14,7 +14,7 @@ import (
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/eventrecorder"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/shortid"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/support"
-	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart/archive"
 	"github.com/rs/zerolog"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -33,12 +33,13 @@ var (
 
 func main() {
 	// Flags
-	kubeconfig := flag.String(clientcmd.RecommendedConfigPathFlag, clientcmd.RecommendedHomeFile, "absolute path to the kubeconfig file")
+	kubeconfig := flag.String(clientcmd.RecommendedConfigPathFlag,
+		clientcmd.RecommendedHomeFile, "absolute path to the kubeconfig file")
 	debug := flag.Bool("debug",
 		support.EnvBool("COMPOSITION_CONTROLLER_DEBUG", false), "dump verbose output")
 	workers := flag.Int("workers", support.EnvInt("COMPOSITION_CONTROLLER_WORKERS", 1), "number of workers")
 	resyncInterval := flag.Duration("resync-interval",
-		support.EnvDuration("COMPOSITION_CONTROLLER_RESYNC_INTERVAL", time.Minute*1), "resync interval")
+		support.EnvDuration("COMPOSITION_CONTROLLER_RESYNC_INTERVAL", time.Minute*3), "resync interval")
 	resourceGroup := flag.String("group",
 		support.EnvString("COMPOSITION_CONTROLLER_GROUP", ""), "resource api group")
 	resourceVersion := flag.String("version",
@@ -49,6 +50,9 @@ func main() {
 		support.EnvString("COMPOSITION_CONTROLLER_NAMESPACE", ""), "namespace")
 	chart := flag.String("chart",
 		support.EnvString("COMPOSITION_CONTROLLER_CHART", ""), "chart")
+	chartProviderUrl := flag.String("chart-provider-url",
+		support.EnvString("COMPOSITION_CONTROLLER_CHART_URL", ""),
+		"url of the service that provides the chart archive")
 
 	flag.Usage = func() {
 		fmt.Fprintln(flag.CommandLine.Output(), "Flags:")
@@ -98,10 +102,13 @@ func main() {
 		log.Fatal().Err(err).Msg("Creating event recorder.")
 	}
 
-	var pig helmchart.PackageInfoGetter
+	var pig archive.Getter
 	if len(*chart) > 0 {
-		pig = helmchart.NewStaticPackageInfoGetter(*chart)
+		pig = archive.Static(*chart)
+	} else {
+		pig = archive.Remote(*chartProviderUrl)
 	}
+
 	handler := composition.NewHandler(cfg, &log, pig)
 
 	log.Info().

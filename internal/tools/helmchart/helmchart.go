@@ -28,35 +28,6 @@ import (
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 )
 
-type PackageInfo struct {
-	// URL of the helm chart package that is being requested.
-	URL string `json:"url"`
-
-	// Version of the chart release.
-	// +optional
-	Version *string `json:"version,omitempty"`
-}
-
-type PackageInfoGetter interface {
-	GetPackage(ctx context.Context) (PackageInfo, error)
-}
-
-var _ PackageInfoGetter = (*staticPackageInfoGetter)(nil)
-
-type staticPackageInfoGetter struct {
-	chartName string
-}
-
-func (pig staticPackageInfoGetter) GetPackage(ctx context.Context) (PackageInfo, error) {
-	return PackageInfo{
-		URL: pig.chartName,
-	}, nil
-}
-
-func NewStaticPackageInfoGetter(chart string) PackageInfoGetter {
-	return staticPackageInfoGetter{chartName: chart}
-}
-
 func DeriveGroupVersionKind(cli helmclient.Client, url string) (schema.GroupVersionKind, error) {
 	chart, _, err := cli.GetChart(url, &action.ChartPathOptions{})
 	if err != nil {
