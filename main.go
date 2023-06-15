@@ -47,7 +47,7 @@ func main() {
 	resourceName := flag.String("resource",
 		support.EnvString("COMPOSITION_CONTROLLER_RESOURCE", ""), "resource plural name")
 	namespace := flag.String("namespace",
-		support.EnvString("COMPOSITION_CONTROLLER_NAMESPACE", ""), "namespace")
+		support.EnvString("COMPOSITION_CONTROLLER_NAMESPACE", "default"), "namespace")
 	chart := flag.String("chart",
 		support.EnvString("COMPOSITION_CONTROLLER_CHART", ""), "chart")
 	chartProviderUrl := flag.String("chart-provider-url",
