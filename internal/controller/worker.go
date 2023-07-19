@@ -3,11 +3,9 @@ package controller
 import (
 	"context"
 
-	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/runtime"
 )
 
@@ -154,12 +152,7 @@ func (c *Controller) handleDeleteEvent(ctx context.Context, ref ObjectRef) error
 }
 
 func (c *Controller) fetch(ctx context.Context, ref ObjectRef) (*unstructured.Unstructured, error) {
-	gvr, err := tools.GVKtoGVR(c.discoveryClient, schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
-	if err != nil {
-		return nil, err
-	}
-
-	return c.dynamicClient.Resource(gvr).
+	return c.dynamicClient.Resource(c.gvr).
 		Namespace(ref.Namespace).
 		Get(ctx, ref.Name, metav1.GetOptions{})
 }

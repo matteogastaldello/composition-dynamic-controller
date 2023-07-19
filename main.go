@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart/archive"
 	"github.com/rs/zerolog"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -50,9 +50,6 @@ func main() {
 		support.EnvString("COMPOSITION_CONTROLLER_NAMESPACE", "default"), "namespace")
 	chart := flag.String("chart",
 		support.EnvString("COMPOSITION_CONTROLLER_CHART", ""), "chart")
-	chartProviderUrl := flag.String("chart-provider-url",
-		support.EnvString("COMPOSITION_CONTROLLER_CHART_URL", ""),
-		"url of the service that provides the chart archive")
 
 	flag.Usage = func() {
 		fmt.Fprintln(flag.CommandLine.Output(), "Flags:")
@@ -92,11 +89,6 @@ func main() {
 		log.Fatal().Err(err).Msg("Creating dynamic client.")
 	}
 
-	dis, err := discovery.NewDiscoveryClientForConfig(cfg)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Creating discovery client.")
-	}
-
 	rec, err := eventrecorder.Create(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Creating event recorder.")
@@ -106,7 +98,10 @@ func main() {
 	if len(*chart) > 0 {
 		pig = archive.Static(*chart)
 	} else {
-		pig = archive.Remote(*chartProviderUrl)
+		pig, err = archive.Dynamic(cfg)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Creating chart url info getter.")
+		}
 	}
 
 	handler := composition.NewHandler(cfg, &log, pig)
@@ -125,12 +120,11 @@ func main() {
 		log.Fatal().Err(err).Msg("Creating shortid generator.")
 	}
 	ctrl := controller.New(sid, controller.Options{
-		Client:          dyn,
-		DiscoveryClient: dis,
-		ResyncInterval:  *resyncInterval,
+		Client:         dyn,
+		ResyncInterval: *resyncInterval,
 		GVR: schema.GroupVersionResource{
 			Group:    *resourceGroup,
-			Version:  *resourceVersion,
+			Version:  strings.ReplaceAll(*resourceVersion, "_", "-"),
 			Resource: *resourceName,
 		},
 		Namespace: *namespace,

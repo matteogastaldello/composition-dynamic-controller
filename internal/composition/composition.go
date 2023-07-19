@@ -89,7 +89,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 
 	pkg, err := h.packageInfoGetter.Get(
 		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
-		mg.GetName(), mg.GetNamespace())
+		mg.GetNamespace())
 	if err != nil {
 		return false, err
 	}
@@ -195,8 +195,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	}
 
 	pkg, err := h.packageInfoGetter.Get(
-		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
-		mg.GetName(), mg.GetNamespace())
+		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()), mg.GetNamespace())
 	if err != nil {
 		return err
 	}
@@ -265,7 +264,7 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 
 	pkg, err := h.packageInfoGetter.Get(
 		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
-		mg.GetName(), mg.GetNamespace())
+		mg.GetNamespace())
 	if err != nil {
 		return err
 	}
@@ -302,7 +301,7 @@ func (h *handler) Delete(ctx context.Context, ref controller.ObjectRef) error {
 
 	pkg, err := h.packageInfoGetter.Get(
 		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
-		mg.GetName(), mg.GetNamespace())
+		mg.GetNamespace())
 	if err != nil {
 		return err
 	}

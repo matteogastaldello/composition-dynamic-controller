@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -21,25 +20,24 @@ import (
 )
 
 type Options struct {
-	Client          dynamic.Interface
-	DiscoveryClient *discovery.DiscoveryClient
-	GVR             schema.GroupVersionResource
-	Namespace       string
-	ResyncInterval  time.Duration
-	Recorder        record.EventRecorder
-	Logger          *zerolog.Logger
-	ExternalClient  ExternalClient
+	Client         dynamic.Interface
+	GVR            schema.GroupVersionResource
+	Namespace      string
+	ResyncInterval time.Duration
+	Recorder       record.EventRecorder
+	Logger         *zerolog.Logger
+	ExternalClient ExternalClient
 }
 
 type Controller struct {
-	dynamicClient   dynamic.Interface
-	discoveryClient *discovery.DiscoveryClient
-	queue           workqueue.RateLimitingInterface
-	indexer         cache.Indexer
-	informer        cache.Controller
-	recorder        record.EventRecorder
-	logger          *zerolog.Logger
-	externalClient  ExternalClient
+	dynamicClient  dynamic.Interface
+	gvr            schema.GroupVersionResource
+	queue          workqueue.RateLimitingInterface
+	indexer        cache.Indexer
+	informer       cache.Controller
+	recorder       record.EventRecorder
+	logger         *zerolog.Logger
+	externalClient ExternalClient
 }
 
 // New creates a new Controller.
@@ -158,14 +156,14 @@ func New(sid *shortid.Shortid, opts Options) *Controller {
 	)
 
 	return &Controller{
-		dynamicClient:   opts.Client,
-		discoveryClient: opts.DiscoveryClient,
-		recorder:        opts.Recorder,
-		logger:          opts.Logger,
-		informer:        informer,
-		indexer:         indexer,
-		queue:           queue,
-		externalClient:  opts.ExternalClient,
+		dynamicClient:  opts.Client,
+		gvr:            opts.GVR,
+		recorder:       opts.Recorder,
+		logger:         opts.Logger,
+		informer:       informer,
+		indexer:        indexer,
+		queue:          queue,
+		externalClient: opts.ExternalClient,
 	}
 }
 
