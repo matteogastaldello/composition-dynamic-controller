@@ -3,17 +3,13 @@ package helmchart
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"strings"
 
-	"github.com/gertd/go-pluralize"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/helmclient"
-	"github.com/krateoplatformops/composition-dynamic-controller/internal/text"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools"
 	unstructuredtools "github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured"
 
-	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/release"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -27,27 +23,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 )
-
-func DeriveGroupVersionKind(cli helmclient.Client, url string) (schema.GroupVersionKind, error) {
-	chart, _, err := cli.GetChart(url, &action.ChartPathOptions{})
-	if err != nil {
-		return schema.GroupVersionKind{}, err
-	}
-
-	name := chart.Metadata.Name
-	version := chart.Metadata.Version
-
-	pc := pluralize.NewClient()
-	plural := strings.ToLower(pc.Plural(name))
-
-	gvk := schema.GroupVersionKind{
-		Group:   fmt.Sprintf("%s.krateo.io", plural),
-		Version: fmt.Sprintf("v%s", strings.ReplaceAll(version, ".", "-")),
-		Kind:    text.ToGolangName(name),
-	}
-
-	return gvk, nil
-}
 
 func ExtractValuesFromSpec(un *unstructured.Unstructured) ([]byte, error) {
 	if un == nil {

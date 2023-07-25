@@ -17,23 +17,6 @@ const (
 	pkgURL = "../../../testdata/dummy-chart-0.2.0.tgz"
 )
 
-func TestDeriveGroupVersionKind(t *testing.T) {
-	res := createDummyResource()
-
-	cli, err := connect(&zerolog.Logger{}, res)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	gvk, err := DeriveGroupVersionKind(cli, pkgURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert.Equal(t, "dummy-charts.krateo.io/v0-2-0", gvk.GroupVersion().String())
-	assert.Equal(t, "DummyChart", gvk.Kind)
-}
-
 func ExampleExtractValuesFromSpec() {
 	res := createDummyResource()
 

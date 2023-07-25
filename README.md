@@ -10,6 +10,4 @@
 | COMPOSITION_CONTROLLER_GROUP           | resource api group         |               |
 | COMPOSITION_CONTROLLER_VERSION         | resource api version       |               |
 | COMPOSITION_CONTROLLER_RESOURCE        | resource plural name       |               |
-| COMPOSITION_CONTROLLER_CHART_URL       | chart provider service url |               |
 
-![](./_diagrams/composition-dynamic-controller-drawio.png)
