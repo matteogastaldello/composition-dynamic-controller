@@ -33,7 +33,7 @@ var (
 func main() {
 	// Flags
 	kubeconfig := flag.String(clientcmd.RecommendedConfigPathFlag,
-		clientcmd.RecommendedHomeFile, "absolute path to the kubeconfig file")
+		support.EnvString("KUBECONFIG", ""), "absolute path to the kubeconfig file")
 	debug := flag.Bool("debug",
 		support.EnvBool("COMPOSITION_CONTROLLER_DEBUG", false), "dump verbose output")
 	workers := flag.Int("workers", support.EnvInt("COMPOSITION_CONTROLLER_WORKERS", 1), "number of workers")
