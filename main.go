@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -124,7 +123,7 @@ func main() {
 		ResyncInterval: *resyncInterval,
 		GVR: schema.GroupVersionResource{
 			Group:    *resourceGroup,
-			Version:  strings.ReplaceAll(*resourceVersion, "_", "-"),
+			Version:  *resourceVersion,
 			Resource: *resourceName,
 		},
 		Namespace: *namespace,

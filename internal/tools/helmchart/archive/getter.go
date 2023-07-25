@@ -54,9 +54,10 @@ func (pig staticGetter) Get(_ schema.GroupVersionKind, _ string) (Info, error) {
 }
 
 const (
-	keyCrdGroup   = "krateo.io/crd-group"
-	keyCrdVersion = "krateo.io/crd-version"
-	keyCrdKind    = "krateo.io/crd-kind"
+	keyCrdGroup    = "krateo.io/crd-group"
+	keyCrdVersion  = "krateo.io/crd-version"
+	keyCrdKind     = "krateo.io/crd-kind"
+	keyCrdResource = "krateo.io/crd-resource"
 )
 
 var _ Getter = (*dynamicGetter)(nil)
@@ -66,15 +67,15 @@ type dynamicGetter struct {
 }
 
 func (g *dynamicGetter) Get(gvk schema.GroupVersionKind, namespace string) (Info, error) {
-	gvr := schema.GroupVersionResource{
-		Group:    "krateo.io",
-		Version:  "v1alpha1",
-		Resource: "definitions",
-	}
-
 	sel, err := g.selectorForGVK(gvk)
 	if err != nil {
 		return Info{}, err
+	}
+
+	gvr := schema.GroupVersionResource{
+		Group:    "core.krateo.io",
+		Version:  "v1alpha1",
+		Resource: "definitions",
 	}
 
 	all, err := g.dynamicClient.Resource(gvr).Namespace(namespace).

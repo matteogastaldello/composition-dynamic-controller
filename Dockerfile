@@ -24,17 +24,18 @@ COPY internal/ internal/
 COPY main.go main.go
 
 # Build
-RUN CGO_ENABLED=0 GO111MODULE=on go build -a -o /bin/app ./main.go && \
-    strip /bin/app
+RUN CGO_ENABLED=0 GO111MODULE=on go build -a -o /bin/controller ./main.go && \
+    strip /bin/controller
 
 # Deployment environment
 # ----------------------
-FROM scratch
+FROM gcr.io/distroless/static:nonroot
 
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-COPY --from=builder /bin/app /bin/app
+COPY --from=builder /bin/controller /bin/controller
 
+USER nonroot:nonroot
 
-ENTRYPOINT ["/bin/app"]
+ENTRYPOINT ["/bin/controller"]
