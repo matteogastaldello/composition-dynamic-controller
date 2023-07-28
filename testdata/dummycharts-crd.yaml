@@ -2,13 +2,20 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.12.0
-  name: dummycharts.dummy-charts.krateo.io
+    controller-gen.kubebuilder.io/version: v0.12.1
+  creationTimestamp: "2023-07-27T12:50:48Z"
+  generation: 1
+  name: dummycharts.composition.krateo.io
+  resourceVersion: "927"
+  uid: 7ae187ba-54c8-4438-a671-38914cac5db3
 spec:
-  group: dummy-charts.krateo.io
+  conversion:
+    strategy: None
+  group: composition.krateo.io
   names:
     categories:
     - krateo
+    - composition
     kind: DummyChart
     listKind: DummyChartList
     plural: dummycharts
@@ -116,3 +123,25 @@ spec:
     storage: true
     subresources:
       status: {}
+status:
+  acceptedNames:
+    categories:
+    - krateo
+    - composition
+    kind: DummyChart
+    listKind: DummyChartList
+    plural: dummycharts
+    singular: dummychart
+  conditions:
+  - lastTransitionTime: "2023-07-27T12:50:48Z"
+    message: no conflicts found
+    reason: NoConflicts
+    status: "True"
+    type: NamesAccepted
+  - lastTransitionTime: "2023-07-27T12:50:48Z"
+    message: the initial names have been accepted
+    reason: InitialNamesAccepted
+    status: "True"
+    type: Established
+  storedVersions:
+  - v0-2-0

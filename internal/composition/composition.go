@@ -16,7 +16,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -87,9 +86,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		return false, nil
 	}
 
-	pkg, err := h.packageInfoGetter.Get(
-		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
-		mg.GetNamespace())
+	pkg, err := h.packageInfoGetter.Get(mg)
 	if err != nil {
 		return false, err
 	}
@@ -194,8 +191,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		return err
 	}
 
-	pkg, err := h.packageInfoGetter.Get(
-		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()), mg.GetNamespace())
+	pkg, err := h.packageInfoGetter.Get(mg)
 	if err != nil {
 		return err
 	}
@@ -262,9 +258,7 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 		return err
 	}
 
-	pkg, err := h.packageInfoGetter.Get(
-		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
-		mg.GetNamespace())
+	pkg, err := h.packageInfoGetter.Get(mg)
 	if err != nil {
 		return err
 	}
@@ -299,9 +293,7 @@ func (h *handler) Delete(ctx context.Context, ref controller.ObjectRef) error {
 		return err
 	}
 
-	pkg, err := h.packageInfoGetter.Get(
-		schema.FromAPIVersionAndKind(mg.GetAPIVersion(), mg.GetKind()),
-		mg.GetNamespace())
+	pkg, err := h.packageInfoGetter.Get(&mg)
 	if err != nil {
 		return err
 	}

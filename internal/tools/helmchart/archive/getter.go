@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	unstructuredtools "github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -23,7 +24,7 @@ type Info struct {
 }
 
 type Getter interface {
-	Get(gvk schema.GroupVersionKind, namespace string) (Info, error)
+	Get(un *unstructured.Unstructured) (Info, error)
 }
 
 func Static(chart string) Getter {
@@ -47,17 +48,16 @@ type staticGetter struct {
 	chartName string
 }
 
-func (pig staticGetter) Get(_ schema.GroupVersionKind, _ string) (Info, error) {
+func (pig staticGetter) Get(_ *unstructured.Unstructured) (Info, error) {
 	return Info{
 		URL: pig.chartName,
 	}, nil
 }
 
 const (
-	keyCrdGroup    = "krateo.io/crd-group"
-	keyCrdVersion  = "krateo.io/crd-version"
-	keyCrdKind     = "krateo.io/crd-kind"
-	keyCrdResource = "krateo.io/crd-resource"
+	labelKeyGroup    = "krateo.io/crd-group"
+	labelKeyVersion  = "krateo.io/crd-version"
+	labelKeyResource = "krateo.io/crd-resource"
 )
 
 var _ Getter = (*dynamicGetter)(nil)
@@ -66,19 +66,25 @@ type dynamicGetter struct {
 	dynamicClient dynamic.Interface
 }
 
-func (g *dynamicGetter) Get(gvk schema.GroupVersionKind, namespace string) (Info, error) {
-	sel, err := g.selectorForGVK(gvk)
+func (g *dynamicGetter) Get(un *unstructured.Unstructured) (Info, error) {
+	gvr, err := unstructuredtools.GVR(un)
 	if err != nil {
 		return Info{}, err
 	}
 
-	gvr := schema.GroupVersionResource{
+	sel, err := g.selectorForGVR(gvr)
+	if err != nil {
+		return Info{}, err
+	}
+
+	gvrForDefinitions := schema.GroupVersionResource{
 		Group:    "core.krateo.io",
 		Version:  "v1alpha1",
 		Resource: "definitions",
 	}
 
-	all, err := g.dynamicClient.Resource(gvr).Namespace(namespace).
+	all, err := g.dynamicClient.Resource(gvrForDefinitions).
+		Namespace(un.GetNamespace()).
 		List(context.Background(), metav1.ListOptions{
 			LabelSelector: sel,
 		})
@@ -89,7 +95,7 @@ func (g *dynamicGetter) Get(gvk schema.GroupVersionKind, namespace string) (Info
 	switch tot := len(all.Items); {
 	case tot == 0:
 		return Info{},
-			fmt.Errorf("no definition found for %v in namespace: %s", gvk, namespace)
+			fmt.Errorf("no definition found for '%v' in namespace: %s", gvr, un.GetNamespace())
 	case tot == 1:
 		url, ok, err := unstructured.NestedString(all.Items[0].Object, "spec", "chartUrl")
 		if err != nil {
@@ -97,32 +103,32 @@ func (g *dynamicGetter) Get(gvk schema.GroupVersionKind, namespace string) (Info
 		}
 		if !ok {
 			return Info{},
-				fmt.Errorf("missing spec.chartUrl value in definition for %v in namespace: %s", gvk, namespace)
+				fmt.Errorf("missing spec.chartUrl value in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
 		}
 		return Info{URL: url}, nil
 	default:
 		return Info{},
-			fmt.Errorf("found %d definitions for %v in namespace: %s", tot, gvk, namespace)
+			fmt.Errorf("found %d definitions for '%v' in namespace: %s", tot, gvr, un.GetNamespace())
 	}
 }
 
-func (g *dynamicGetter) selectorForGVK(gvk schema.GroupVersionKind) (string, error) {
-	group, err := labels.NewRequirement(keyCrdGroup, selection.Equals, []string{gvk.Group})
+func (g *dynamicGetter) selectorForGVR(gvr schema.GroupVersionResource) (string, error) {
+	group, err := labels.NewRequirement(labelKeyGroup, selection.Equals, []string{gvr.Group})
 	if err != nil {
 		return "", err
 	}
 
-	version, err := labels.NewRequirement(keyCrdVersion, selection.Equals, []string{gvk.Version})
+	version, err := labels.NewRequirement(labelKeyVersion, selection.Equals, []string{gvr.Version})
 	if err != nil {
 		return "", err
 	}
 
-	kind, err := labels.NewRequirement(keyCrdKind, selection.Equals, []string{gvk.Kind})
+	resource, err := labels.NewRequirement(labelKeyResource, selection.Equals, []string{gvr.Resource})
 	if err != nil {
 		return "", err
 	}
 
-	selector := labels.NewSelector().Add(*group, *version, *kind)
+	selector := labels.NewSelector().Add(*group, *version, *resource)
 
 	return selector.String(), nil
 }

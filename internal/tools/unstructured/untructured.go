@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gobuffalo/flect"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured/condition"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 type NotAvailableError struct {
@@ -122,6 +124,16 @@ func ExtractFailedObjectRef(un *unstructured.Unstructured) (*controller.ObjectRe
 
 func UnsetFailedObjectRef(un *unstructured.Unstructured) {
 	removeNestedField(un, "status", "failedObjectRef")
+}
+
+func GVR(un *unstructured.Unstructured) (schema.GroupVersionResource, error) {
+	gv, err := schema.ParseGroupVersion(un.GetAPIVersion())
+	if err != nil {
+		return schema.GroupVersionResource{}, err
+	}
+
+	resource := strings.ToLower(flect.Pluralize(un.GetKind()))
+	return gv.WithResource(resource), nil
 }
 
 func setNestedFieldNoCopy(uns *unstructured.Unstructured, value interface{}, fields ...string) error {

@@ -49,10 +49,8 @@ kind-up: ## starts a KinD cluster for local development
 kind-down: ## shuts down the KinD cluster
 	@$(KIND) delete cluster --name=$(KIND_CLUSTER_NAME)
 
-
-demo:
-	@$(KUBECTL) apply -f testdata/dummychart.yaml
-	go run main.go
+dev:
+	go run main.go -kubeconfig $(HOME)/.kube/config
 
 .PHONY: help
 help:

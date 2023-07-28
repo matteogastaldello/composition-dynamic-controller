@@ -3,6 +3,7 @@ module github.com/krateoplatformops/composition-dynamic-controller
 go 1.20
 
 require (
+	github.com/gobuffalo/flect v1.0.2
 	github.com/golang/mock v1.5.0
 	github.com/google/go-cmp v0.5.9
 	github.com/pkg/errors v0.9.1
