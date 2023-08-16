@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,13 +33,15 @@ func (c *Controller) handleErr(err error, obj interface{}) {
 		return
 	}
 
-	if c.queue.NumRequeues(obj) < maxRetries {
-		c.logger.Warn().Msgf("error processing event: %v, retrying", err)
+	if retries := c.queue.NumRequeues(obj); retries < maxRetries {
+		c.logger.Warn().Int("retries", retries).
+			Str("obj", fmt.Sprintf("%v", obj)).
+			Msgf("error processing event: %v, retrying", err)
 		c.queue.AddRateLimited(obj)
 		return
 	}
 
-	c.logger.Error().Err(err).Msg("error processing event (max retries reached)")
+	c.logger.Err(err).Msg("error processing event (max retries reached)")
 	c.queue.Forget(obj)
 	runtime.HandleError(err)
 }

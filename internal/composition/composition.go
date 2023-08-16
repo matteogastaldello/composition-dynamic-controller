@@ -206,7 +206,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		unstructuredtools.SetCondition(mg, condition.FailWithReason(
 			fmt.Sprintf("Creating failed: %s", err.Error())))
 
-		return tools.UpdateStatus(ctx, mg.DeepCopy(), tools.UpdateStatusOptions{
+		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
 			DiscoveryClient: h.discoveryClient,
 			DynamicClient:   h.dynamicClient,
 		})
@@ -236,7 +236,7 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 	}
 
 	meta.SetExternalCreatePending(mg, time.Now())
-	if err := tools.UpdateStatus(ctx, mg.DeepCopy(), tools.UpdateStatusOptions{
+	if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	}); err != nil {
@@ -262,7 +262,7 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 	err = helmchart.Update(ctx, helmchart.UpdateOptions{
 		HelmClient: hc,
 		ChartName:  pkg.URL,
-		Resource:   mg.DeepCopy(),
+		Resource:   mg,
 	})
 	if err != nil {
 		log.Err(err).Msg("Performing helm chart update")
