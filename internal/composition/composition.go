@@ -255,11 +255,13 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 
 	hc, err := h.helmClientForResource(mg)
 	if err != nil {
+		log.Err(err).Msg("Getting helm client")
 		return err
 	}
 
 	pkg, err := h.packageInfoGetter.Get(mg)
 	if err != nil {
+		log.Err(err).Msg("Getting package info")
 		return err
 	}
 
@@ -269,6 +271,7 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 		Resource:   mg,
 	})
 	if err != nil {
+		log.Err(err).Msg("Performing helm chart update")
 		return err
 	}
 
