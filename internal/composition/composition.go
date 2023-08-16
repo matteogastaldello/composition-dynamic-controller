@@ -173,7 +173,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	}
 
 	meta.SetExternalCreatePending(mg, time.Now())
-	if err := tools.UpdateStatus(ctx, mg.DeepCopy(), tools.UpdateStatusOptions{
+	if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	}); err != nil {

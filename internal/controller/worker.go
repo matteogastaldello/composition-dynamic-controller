@@ -96,10 +96,11 @@ func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 	}
 
 	if !exists {
-		c.queue.Add(event{
-			eventType: Create,
-			objectRef: ref,
-		})
+		return c.externalClient.Create(ctx, el)
+		// c.queue.AddAfter(event{
+		// 	eventType: Create,
+		// 	objectRef: ref,
+		// }, time.Second*1)
 	}
 
 	return nil
