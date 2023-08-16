@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -96,11 +97,11 @@ func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 	}
 
 	if !exists {
-		return c.externalClient.Create(ctx, el)
-		// c.queue.AddAfter(event{
-		// 	eventType: Create,
-		// 	objectRef: ref,
-		// }, time.Second*1)
+		//return c.externalClient.Create(ctx, el)
+		c.queue.AddAfter(event{
+			eventType: Create,
+			objectRef: ref,
+		}, time.Second*3)
 	}
 
 	return nil
