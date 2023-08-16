@@ -169,18 +169,11 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	// do is to refuse to proceed.
 	if meta.ExternalCreateIncomplete(mg) {
 		log.Warn().Msg(errCreateIncomplete)
-		err := unstructuredtools.SetCondition(mg, condition.Creating())
-		if err != nil {
-			return err
-		}
-		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
-			DiscoveryClient: h.discoveryClient,
-			DynamicClient:   h.dynamicClient,
-		})
+		return nil
 	}
 
 	meta.SetExternalCreatePending(mg, time.Now())
-	if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+	if err := tools.UpdateStatus(ctx, mg.DeepCopy(), tools.UpdateStatusOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	}); err != nil {
@@ -213,7 +206,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		unstructuredtools.SetCondition(mg, condition.FailWithReason(
 			fmt.Sprintf("Creating failed: %s", err.Error())))
 
-		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+		return tools.UpdateStatus(ctx, mg.DeepCopy(), tools.UpdateStatusOptions{
 			DiscoveryClient: h.discoveryClient,
 			DynamicClient:   h.dynamicClient,
 		})
@@ -239,18 +232,11 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 	// do is to refuse to proceed.
 	if meta.ExternalCreateIncomplete(mg) {
 		log.Warn().Msg(errCreateIncomplete)
-		err := unstructuredtools.SetCondition(mg, condition.Creating())
-		if err != nil {
-			return err
-		}
-		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
-			DiscoveryClient: h.discoveryClient,
-			DynamicClient:   h.dynamicClient,
-		})
+		return nil
 	}
 
 	meta.SetExternalCreatePending(mg, time.Now())
-	if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+	if err := tools.UpdateStatus(ctx, mg.DeepCopy(), tools.UpdateStatusOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	}); err != nil {
@@ -276,7 +262,7 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 	err = helmchart.Update(ctx, helmchart.UpdateOptions{
 		HelmClient: hc,
 		ChartName:  pkg.URL,
-		Resource:   mg,
+		Resource:   mg.DeepCopy(),
 	})
 	if err != nil {
 		log.Err(err).Msg("Performing helm chart update")
