@@ -61,6 +61,7 @@ type handler struct {
 
 func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (bool, error) {
 	log := h.logger.With().
+		Str("op", "Observe").
 		Str("apiVersion", mg.GetAPIVersion()).
 		Str("kind", mg.GetKind()).
 		Str("name", mg.GetName()).
@@ -72,6 +73,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 
 	hc, err := h.helmClientForResource(mg)
 	if err != nil {
+		log.Err(err).Msg("Getting helm client")
 		return false, err
 	}
 
@@ -88,6 +90,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 
 	pkg, err := h.packageInfoGetter.Get(mg)
 	if err != nil {
+		log.Err(err).Msg("Getting package info")
 		return false, err
 	}
 
@@ -97,6 +100,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		PackageURL: pkg.URL,
 	})
 	if err != nil {
+		log.Err(err).Msg("Rendering helm chart template")
 		return false, err
 	}
 	if len(all) == 0 {
@@ -154,6 +158,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 
 func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) error {
 	log := h.logger.With().
+		Str("op", "Create").
 		Str("apiVersion", mg.GetAPIVersion()).
 		Str("kind", mg.GetKind()).
 		Str("name", mg.GetName()).
@@ -188,11 +193,13 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 
 	hc, err := h.helmClientForResource(mg)
 	if err != nil {
+		log.Err(err).Msg("Getting helm client")
 		return err
 	}
 
 	pkg, err := h.packageInfoGetter.Get(mg)
 	if err != nil {
+		log.Err(err).Msg("Getting package info")
 		return err
 	}
 
@@ -219,6 +226,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 
 func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) error {
 	log := h.logger.With().
+		Str("op", "Update").
 		Str("apiVersion", mg.GetAPIVersion()).
 		Str("kind", mg.GetKind()).
 		Str("name", mg.GetName()).
