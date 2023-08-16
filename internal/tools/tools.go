@@ -24,7 +24,9 @@ func UpdateStatus(ctx context.Context, el *unstructured.Unstructured, opts Updat
 
 	_, err = opts.DynamicClient.Resource(gvr).
 		Namespace(el.GetNamespace()).
-		UpdateStatus(ctx, el, metav1.UpdateOptions{})
+		UpdateStatus(ctx, el, metav1.UpdateOptions{
+			FieldValidation: "Ignore",
+		})
 
 	return err
 }
