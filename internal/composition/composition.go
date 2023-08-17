@@ -137,7 +137,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 				return true, err
 			}
 
-			return true, tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+			return true, tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 				DiscoveryClient: h.discoveryClient,
 				DynamicClient:   h.dynamicClient,
 			})
@@ -150,7 +150,7 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		return true, err
 	}
 
-	return true, tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+	return true, tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	})
@@ -173,7 +173,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		if err != nil {
 			return err
 		}
-		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+		return tools.Update(ctx, mg, tools.UpdateOptions{
 			DiscoveryClient: h.discoveryClient,
 			DynamicClient:   h.dynamicClient,
 		})
@@ -205,7 +205,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		unstructuredtools.SetCondition(mg, condition.FailWithReason(
 			fmt.Sprintf("Creating failed: %s", err.Error())))
 
-		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+		return tools.Update(ctx, mg, tools.UpdateOptions{
 			DiscoveryClient: h.discoveryClient,
 			DynamicClient:   h.dynamicClient,
 		})
@@ -214,7 +214,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	log.Debug().Str("package", pkg.URL).Msg("Installing composition package.")
 
 	meta.SetExternalCreatePending(mg, time.Now())
-	return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+	return tools.Update(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	})
@@ -239,14 +239,14 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 		if err != nil {
 			return err
 		}
-		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+		return tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 			DiscoveryClient: h.discoveryClient,
 			DynamicClient:   h.dynamicClient,
 		})
 	}
 
 	meta.SetExternalCreatePending(mg, time.Now())
-	if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+	if err := tools.Update(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	}); err != nil {

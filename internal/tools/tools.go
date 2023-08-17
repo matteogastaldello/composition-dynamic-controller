@@ -11,12 +11,12 @@ import (
 	"k8s.io/client-go/restmapper"
 )
 
-type UpdateStatusOptions struct {
+type UpdateOptions struct {
 	DiscoveryClient *discovery.DiscoveryClient
 	DynamicClient   dynamic.Interface
 }
 
-func UpdateStatus(ctx context.Context, el *unstructured.Unstructured, opts UpdateStatusOptions) error {
+func Update(ctx context.Context, el *unstructured.Unstructured, opts UpdateOptions) error {
 	gvr, err := GVKtoGVR(opts.DiscoveryClient, el.GroupVersionKind())
 	if err != nil {
 		return err
@@ -24,9 +24,22 @@ func UpdateStatus(ctx context.Context, el *unstructured.Unstructured, opts Updat
 
 	_, err = opts.DynamicClient.Resource(gvr).
 		Namespace(el.GetNamespace()).
-		UpdateStatus(ctx, el, metav1.UpdateOptions{
+		Update(ctx, el, metav1.UpdateOptions{
 			FieldValidation: "Ignore",
 		})
+
+	return err
+}
+
+func UpdateStatus(ctx context.Context, el *unstructured.Unstructured, opts UpdateOptions) error {
+	gvr, err := GVKtoGVR(opts.DiscoveryClient, el.GroupVersionKind())
+	if err != nil {
+		return err
+	}
+
+	_, err = opts.DynamicClient.Resource(gvr).
+		Namespace(el.GetNamespace()).
+		UpdateStatus(ctx, el, metav1.UpdateOptions{})
 
 	return err
 }
