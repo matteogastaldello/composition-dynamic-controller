@@ -19,7 +19,7 @@ func Install(ctx context.Context, opts InstallOptions) (*release.Release, int64,
 		ReleaseName:     opts.Resource.GetName(),
 		Namespace:       opts.Resource.GetNamespace(),
 		ChartName:       opts.ChartName,
-		CreateNamespace: true,
+		CreateNamespace: false,
 		UpgradeCRDs:     true,
 		Wait:            false,
 	}
