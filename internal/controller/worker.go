@@ -165,7 +165,6 @@ func (c *Controller) fetch(ctx context.Context, ref ObjectRef, clean bool) (*uns
 			unstructured.RemoveNestedField(res.Object,
 				"metadata", "annotations", "kubectl.kubernetes.io/last-applied-configuration")
 			unstructured.RemoveNestedField(res.Object, "metadata", "creationTimestamp")
-			unstructured.RemoveNestedField(res.Object, "metadata", "resourceVersion")
 			unstructured.RemoveNestedField(res.Object, "metadata", "generation")
 			unstructured.RemoveNestedField(res.Object, "metadata", "uid")
 		}
