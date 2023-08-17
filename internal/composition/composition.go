@@ -127,15 +127,8 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 				Str("package", pkg.URL).
 				Msgf("Composition not ready due to: %s.", ref.String())
 
-			err := unstructuredtools.SetFailedObjectRef(mg, ref)
-			if err != nil {
-				return true, err
-			}
-
-			err = unstructuredtools.SetCondition(mg, condition.Unavailable())
-			if err != nil {
-				return true, err
-			}
+			_ = unstructuredtools.SetFailedObjectRef(mg, ref)
+			_ = unstructuredtools.SetCondition(mg, condition.Unavailable())
 
 			return true, tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 				DiscoveryClient: h.discoveryClient,
@@ -145,16 +138,10 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	}
 
 	log.Debug().Str("package", pkg.URL).Msg("Composition ready.")
-	meta.SetExternalCreateSucceeded(mg, time.Now())
-	// _ = tools.Update(ctx, mg, tools.UpdateOptions{
-	// 	DiscoveryClient: h.discoveryClient,
-	// 	DynamicClient:   h.dynamicClient,
-	// })
 
-	err = unstructuredtools.SetCondition(mg, condition.Available())
-	if err != nil {
-		return true, err
-	}
+	meta.SetExternalCreateSucceeded(mg, time.Now())
+
+	_ = unstructuredtools.SetCondition(mg, condition.Available())
 
 	return true, tools.Update(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
@@ -249,10 +236,8 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 	// do is to refuse to proceed.
 	if meta.ExternalCreateIncomplete(mg) {
 		log.Warn().Msg(errCreateIncomplete)
-		err := unstructuredtools.SetCondition(mg, condition.Creating())
-		if err != nil {
-			return err
-		}
+		_ = unstructuredtools.SetCondition(mg, condition.Creating())
+
 		return tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 			DiscoveryClient: h.discoveryClient,
 			DynamicClient:   h.dynamicClient,
@@ -260,10 +245,11 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 	}
 
 	meta.SetExternalCreatePending(mg, time.Now())
-	if err := tools.Update(ctx, mg, tools.UpdateOptions{
+	err := tools.Update(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 

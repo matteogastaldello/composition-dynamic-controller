@@ -103,16 +103,16 @@ func New(sid *shortid.Shortid, opts Options) *Controller {
 				}
 
 				if oldUns.GetGeneration() == newUns.GetGeneration() {
-					// queue.Add(event{
-					// 	id:        id,
-					// 	eventType: Observe,
-					// 	objectRef: ObjectRef{
-					// 		APIVersion: newUns.GetAPIVersion(),
-					// 		Kind:       newUns.GetKind(),
-					// 		Name:       newUns.GetName(),
-					// 		Namespace:  newUns.GetNamespace(),
-					// 	},
-					// })
+					queue.Add(event{
+						id:        id,
+						eventType: Observe,
+						objectRef: ObjectRef{
+							APIVersion: newUns.GetAPIVersion(),
+							Kind:       newUns.GetKind(),
+							Name:       newUns.GetName(),
+							Namespace:  newUns.GetNamespace(),
+						},
+					})
 					return
 				}
 
