@@ -167,18 +167,25 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	// If we started but never completed creation of an external resource we
 	// may have lost critical information.The safest thing to
 	// do is to refuse to proceed.
-	// if meta.ExternalCreateIncomplete(mg) {
-	// 	log.Warn().Msg(errCreateIncomplete)
-	// 	return nil
-	// }
+	if meta.ExternalCreateIncomplete(mg) {
+		log.Warn().Msg(errCreateIncomplete)
+		err := unstructuredtools.SetCondition(mg, condition.Creating())
+		if err != nil {
+			return err
+		}
+		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+			DiscoveryClient: h.discoveryClient,
+			DynamicClient:   h.dynamicClient,
+		})
+	}
 
-	// meta.SetExternalCreatePending(mg, time.Now())
-	// if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
-	// 	DiscoveryClient: h.discoveryClient,
-	// 	DynamicClient:   h.dynamicClient,
-	// }); err != nil {
-	// 	return err
-	// }
+	meta.SetExternalCreatePending(mg, time.Now())
+	if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+		DiscoveryClient: h.discoveryClient,
+		DynamicClient:   h.dynamicClient,
+	}); err != nil {
+		return err
+	}
 
 	if h.packageInfoGetter == nil {
 		return fmt.Errorf("helm chart package info getter must be specified")
@@ -202,7 +209,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		Resource:   mg,
 	})
 	if err != nil {
-		//meta.SetExternalCreateFailed(mg, time.Now())
+		meta.SetExternalCreateFailed(mg, time.Now())
 		unstructuredtools.SetCondition(mg, condition.FailWithReason(
 			fmt.Sprintf("Creating failed: %s", err.Error())))
 
@@ -232,7 +239,14 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 	// do is to refuse to proceed.
 	if meta.ExternalCreateIncomplete(mg) {
 		log.Warn().Msg(errCreateIncomplete)
-		return nil
+		err := unstructuredtools.SetCondition(mg, condition.Creating())
+		if err != nil {
+			return err
+		}
+		return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+			DiscoveryClient: h.discoveryClient,
+			DynamicClient:   h.dynamicClient,
+		})
 	}
 
 	meta.SetExternalCreatePending(mg, time.Now())

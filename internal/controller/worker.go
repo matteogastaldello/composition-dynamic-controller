@@ -75,7 +75,7 @@ func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 		return nil
 	}
 
-	el, err := c.fetch(ctx, ref)
+	el, err := c.fetch(ctx, ref, true)
 	if err != nil {
 		c.logger.Err(err).
 			Str("objectRef", ref.String()).
@@ -83,7 +83,7 @@ func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 		return err
 	}
 
-	exists, err := c.externalClient.Observe(ctx, el.DeepCopy())
+	exists, err := c.externalClient.Observe(ctx, el)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			c.queue.Add(event{
@@ -115,7 +115,7 @@ func (c *Controller) handleCreate(ctx context.Context, ref ObjectRef) error {
 		return nil
 	}
 
-	el, err := c.fetch(ctx, ref)
+	el, err := c.fetch(ctx, ref, true)
 	if err != nil {
 		c.logger.Err(err).
 			Str("objectRef", ref.String()).
@@ -123,7 +123,7 @@ func (c *Controller) handleCreate(ctx context.Context, ref ObjectRef) error {
 		return err
 	}
 
-	return c.externalClient.Create(ctx, el.DeepCopy())
+	return c.externalClient.Create(ctx, el)
 }
 
 func (c *Controller) handleUpdateEvent(ctx context.Context, ref ObjectRef) error {
@@ -134,7 +134,7 @@ func (c *Controller) handleUpdateEvent(ctx context.Context, ref ObjectRef) error
 		return nil
 	}
 
-	el, err := c.fetch(ctx, ref)
+	el, err := c.fetch(ctx, ref, true)
 	if err != nil {
 		c.logger.Err(err).
 			Str("objectRef", ref.String()).
@@ -142,7 +142,7 @@ func (c *Controller) handleUpdateEvent(ctx context.Context, ref ObjectRef) error
 		return err
 	}
 
-	return c.externalClient.Update(ctx, el.DeepCopy())
+	return c.externalClient.Update(ctx, el)
 }
 
 func (c *Controller) handleDeleteEvent(ctx context.Context, ref ObjectRef) error {
@@ -156,8 +156,19 @@ func (c *Controller) handleDeleteEvent(ctx context.Context, ref ObjectRef) error
 	return c.externalClient.Delete(ctx, ref)
 }
 
-func (c *Controller) fetch(ctx context.Context, ref ObjectRef) (*unstructured.Unstructured, error) {
-	return c.dynamicClient.Resource(c.gvr).
+func (c *Controller) fetch(ctx context.Context, ref ObjectRef, clean bool) (*unstructured.Unstructured, error) {
+	res, err := c.dynamicClient.Resource(c.gvr).
 		Namespace(ref.Namespace).
 		Get(ctx, ref.Name, metav1.GetOptions{})
+	if err == nil {
+		if clean && res != nil {
+			unstructured.RemoveNestedField(res.Object,
+				"metadata", "annotations", "kubectl.kubernetes.io/last-applied-configuration")
+			unstructured.RemoveNestedField(res.Object, "metadata", "creationTimestamp")
+			unstructured.RemoveNestedField(res.Object, "metadata", "resourceVersion")
+			unstructured.RemoveNestedField(res.Object, "metadata", "generation")
+			unstructured.RemoveNestedField(res.Object, "metadata", "uid")
+		}
+	}
+	return res, err
 }
