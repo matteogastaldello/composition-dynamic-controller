@@ -179,14 +179,6 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		})
 	}
 
-	meta.SetExternalCreatePending(mg, time.Now())
-	if err := tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
-		DiscoveryClient: h.discoveryClient,
-		DynamicClient:   h.dynamicClient,
-	}); err != nil {
-		return err
-	}
-
 	if h.packageInfoGetter == nil {
 		return fmt.Errorf("helm chart package info getter must be specified")
 	}
@@ -221,7 +213,11 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 
 	log.Debug().Str("package", pkg.URL).Msg("Installing composition package.")
 
-	return nil
+	meta.SetExternalCreatePending(mg, time.Now())
+	return tools.UpdateStatus(ctx, mg, tools.UpdateStatusOptions{
+		DiscoveryClient: h.discoveryClient,
+		DynamicClient:   h.dynamicClient,
+	})
 }
 
 func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) error {
