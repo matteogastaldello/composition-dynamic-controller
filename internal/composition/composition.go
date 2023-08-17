@@ -201,14 +201,22 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		Resource:   mg,
 	})
 	if err != nil {
+		log.Err(err).Msgf("Installing helm chart: %s", pkg.URL)
 		meta.SetExternalCreateFailed(mg, time.Now())
-		unstructuredtools.SetCondition(mg, condition.FailWithReason(
-			fmt.Sprintf("Creating failed: %s", err.Error())))
-
-		return tools.Update(ctx, mg, tools.UpdateOptions{
+		_ = tools.Update(ctx, mg, tools.UpdateOptions{
 			DiscoveryClient: h.discoveryClient,
 			DynamicClient:   h.dynamicClient,
 		})
+
+		unstructuredtools.SetCondition(mg, condition.FailWithReason(
+			fmt.Sprintf("Creating failed: %s", err.Error())))
+
+		_ = tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
+			DiscoveryClient: h.discoveryClient,
+			DynamicClient:   h.dynamicClient,
+		})
+
+		return err
 	}
 
 	log.Debug().Str("package", pkg.URL).Msg("Installing composition package.")
