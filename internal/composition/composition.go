@@ -146,17 +146,17 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 
 	log.Debug().Str("package", pkg.URL).Msg("Composition ready.")
 	meta.SetExternalCreateSucceeded(mg, time.Now())
-	_ = tools.Update(ctx, mg, tools.UpdateOptions{
-		DiscoveryClient: h.discoveryClient,
-		DynamicClient:   h.dynamicClient,
-	})
+	// _ = tools.Update(ctx, mg, tools.UpdateOptions{
+	// 	DiscoveryClient: h.discoveryClient,
+	// 	DynamicClient:   h.dynamicClient,
+	// })
 
 	err = unstructuredtools.SetCondition(mg, condition.Available())
 	if err != nil {
 		return true, err
 	}
 
-	return true, tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
+	return true, tools.Update(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	})
