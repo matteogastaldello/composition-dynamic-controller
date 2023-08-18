@@ -140,10 +140,16 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	log.Debug().Str("package", pkg.URL).Msg("Composition ready.")
 
 	meta.SetExternalCreateSucceeded(mg, time.Now())
+	if err := tools.Update(ctx, mg, tools.UpdateOptions{
+		DiscoveryClient: h.discoveryClient,
+		DynamicClient:   h.dynamicClient,
+	}); err != nil {
+		log.Err(err).Msg("Setting meta create succeded annotation.")
+	}
 
 	_ = unstructuredtools.SetCondition(mg, condition.Available())
 
-	return true, tools.Update(ctx, mg, tools.UpdateOptions{
+	return true, tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	})
@@ -166,7 +172,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		if err != nil {
 			return err
 		}
-		return tools.Update(ctx, mg, tools.UpdateOptions{
+		return tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 			DiscoveryClient: h.discoveryClient,
 			DynamicClient:   h.dynamicClient,
 		})
@@ -250,6 +256,7 @@ func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) err
 		DynamicClient:   h.dynamicClient,
 	})
 	if err != nil {
+		log.Err(err).Msg("Setting meta create pending annotation.")
 		return err
 	}
 
