@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/listwatcher"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/shortid"
 	"github.com/rs/zerolog"
@@ -102,7 +103,31 @@ func New(sid *shortid.Shortid, opts Options) *Controller {
 					return
 				}
 
-				if oldUns.GetGeneration() == newUns.GetGeneration() {
+				newSpec, _, err := unstructured.NestedMap(newUns.Object, "spec")
+				if err != nil {
+					opts.Logger.Error().Err(err).Msg("UpdateFunc: getting new object spec.")
+					return
+				}
+
+				oldSpec, _, err := unstructured.NestedMap(oldUns.Object, "spec")
+				if err != nil {
+					opts.Logger.Error().Err(err).Msg("UpdateFunc: getting old object spec.")
+				}
+
+				diff := cmp.Diff(newSpec, oldSpec)
+				opts.Logger.Debug().Str("diff", diff).Msg("UpdateFunc: comparing current spec with desired spec")
+				if len(diff) > 0 {
+					queue.Add(event{
+						id:        id,
+						eventType: Update,
+						objectRef: ObjectRef{
+							APIVersion: newUns.GetAPIVersion(),
+							Kind:       newUns.GetKind(),
+							Name:       newUns.GetName(),
+							Namespace:  newUns.GetNamespace(),
+						},
+					})
+				} else {
 					queue.Add(event{
 						id:        id,
 						eventType: Observe,
@@ -113,19 +138,7 @@ func New(sid *shortid.Shortid, opts Options) *Controller {
 							Namespace:  newUns.GetNamespace(),
 						},
 					})
-					return
 				}
-
-				queue.Add(event{
-					id:        id,
-					eventType: Update,
-					objectRef: ObjectRef{
-						APIVersion: newUns.GetAPIVersion(),
-						Kind:       newUns.GetKind(),
-						Name:       newUns.GetName(),
-						Namespace:  newUns.GetNamespace(),
-					},
-				})
 			},
 			DeleteFunc: func(obj interface{}) {
 				el, ok := obj.(*unstructured.Unstructured)
@@ -136,7 +149,7 @@ func New(sid *shortid.Shortid, opts Options) *Controller {
 
 				id, err := sid.Generate()
 				if err != nil {
-					opts.Logger.Error().Err(err).Msg("UpdateFunc: generating short id.")
+					opts.Logger.Error().Err(err).Msg("DeleteFunc: generating short id.")
 					return
 				}
 
