@@ -139,20 +139,24 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 
 	log.Debug().Str("package", pkg.URL).Msg("Composition ready.")
 
-	meta.SetExternalCreateSucceeded(mg, time.Now())
-	if err := tools.Update(ctx, mg, tools.UpdateOptions{
-		DiscoveryClient: h.discoveryClient,
-		DynamicClient:   h.dynamicClient,
-	}); err != nil {
-		log.Err(err).Msg("Setting meta create succeded annotation.")
+	if meta.ExternalCreateIncomplete(mg) {
+		meta.SetExternalCreateSucceeded(mg, time.Now())
+		return true, tools.Update(ctx, mg, tools.UpdateOptions{
+			DiscoveryClient: h.discoveryClient,
+			DynamicClient:   h.dynamicClient,
+		})
 	}
 
 	_ = unstructuredtools.SetCondition(mg, condition.Available())
-
-	return true, tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
+	err = tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	})
+	if err != nil {
+		log.Err(err).Msgf("Updating cr status with condition: %v", condition.Available())
+	}
+
+	return true, err
 }
 
 func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) error {
