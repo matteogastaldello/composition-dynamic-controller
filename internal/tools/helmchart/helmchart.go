@@ -41,9 +41,10 @@ func ExtractValuesFromSpec(un *unstructured.Unstructured) ([]byte, error) {
 }
 
 type RenderTemplateOptions struct {
-	HelmClient helmclient.Client
-	PackageURL string
-	Resource   *unstructured.Unstructured
+	HelmClient     helmclient.Client
+	PackageUrl     string
+	PackageVersion string
+	Resource       *unstructured.Unstructured
 }
 
 func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]controller.ObjectRef, error) {
@@ -55,7 +56,8 @@ func RenderTemplate(ctx context.Context, opts RenderTemplateOptions) ([]controll
 	chartSpec := helmclient.ChartSpec{
 		ReleaseName: opts.Resource.GetName(),
 		Namespace:   opts.Resource.GetNamespace(),
-		ChartName:   opts.PackageURL,
+		ChartName:   opts.PackageUrl,
+		Version:     opts.PackageVersion,
 		ValuesYaml:  string(dat),
 	}
 

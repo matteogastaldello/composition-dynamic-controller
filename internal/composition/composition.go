@@ -8,7 +8,6 @@ import (
 
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/helmclient"
-	"github.com/krateoplatformops/composition-dynamic-controller/internal/helpers"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/meta"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools/helmchart/archive"
@@ -95,9 +94,10 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	}
 
 	all, err := helmchart.RenderTemplate(ctx, helmchart.RenderTemplateOptions{
-		HelmClient: hc,
-		Resource:   mg,
-		PackageURL: pkg.URL,
+		HelmClient:     hc,
+		Resource:       mg,
+		PackageUrl:     pkg.URL,
+		PackageVersion: pkg.Version,
 	})
 	if err != nil {
 		log.Err(err).Msg("Rendering helm chart template")
@@ -320,7 +320,7 @@ func (h *handler) Delete(ctx context.Context, ref controller.ObjectRef) error {
 		ReleaseName: mg.GetName(),
 		Namespace:   mg.GetNamespace(),
 		ChartName:   pkg.URL,
-		Version:     helpers.String(pkg.Version),
+		Version:     pkg.Version,
 		Wait:        true,
 		Timeout:     time.Minute * 3,
 	}

@@ -42,7 +42,7 @@ func TestRenderTemplate(t *testing.T) {
 	}
 
 	opts := RenderTemplateOptions{
-		PackageURL: pkgURL,
+		PackageUrl: "oci://registry-1.docker.io/bitnamicharts/postgresql",
 		HelmClient: cli,
 		Resource:   res,
 	}
@@ -53,13 +53,13 @@ func TestRenderTemplate(t *testing.T) {
 	}
 
 	assert.Equal(t, "v1", all[0].APIVersion)
-	assert.Equal(t, "ConfigMap", all[0].Kind)
-	assert.Equal(t, "demo-cm", all[0].Name)
+	assert.Equal(t, "Secret", all[0].Kind)
+	assert.Equal(t, "demo-postgresql", all[0].Name)
 	assert.Equal(t, "demo-system", all[0].Namespace)
 
-	assert.Equal(t, "batch/v1", all[1].APIVersion)
-	assert.Equal(t, "CronJob", all[1].Kind)
-	assert.Equal(t, "demo-job", all[1].Name)
+	assert.Equal(t, "v1", all[1].APIVersion)
+	assert.Equal(t, "Service", all[1].Kind)
+	assert.Equal(t, "demo-postgresql-hl", all[1].Name)
 	assert.Equal(t, "demo-system", all[1].Namespace)
 }
 

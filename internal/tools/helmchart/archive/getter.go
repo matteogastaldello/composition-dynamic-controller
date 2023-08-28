@@ -3,6 +3,7 @@ package archive
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	unstructuredtools "github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,12 +20,23 @@ type Info struct {
 	URL string `json:"url"`
 
 	// Version of the chart release.
-	// +optional
-	Version *string `json:"version,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+func (i *Info) IsOCI() bool {
+	return strings.HasPrefix(i.URL, "oci://")
+}
+
+func (i *Info) IsTGZ() bool {
+	return strings.HasSuffix(i.URL, ".tgz")
+}
+
+func (i *Info) IsHTTP() bool {
+	return strings.HasPrefix(i.URL, "http://") || strings.HasPrefix(i.URL, "https://")
 }
 
 type Getter interface {
-	Get(un *unstructured.Unstructured) (Info, error)
+	Get(un *unstructured.Unstructured) (*Info, error)
 }
 
 func Static(chart string) Getter {
@@ -48,8 +60,8 @@ type staticGetter struct {
 	chartName string
 }
 
-func (pig staticGetter) Get(_ *unstructured.Unstructured) (Info, error) {
-	return Info{
+func (pig staticGetter) Get(_ *unstructured.Unstructured) (*Info, error) {
+	return &Info{
 		URL: pig.chartName,
 	}, nil
 }
@@ -66,15 +78,15 @@ type dynamicGetter struct {
 	dynamicClient dynamic.Interface
 }
 
-func (g *dynamicGetter) Get(un *unstructured.Unstructured) (Info, error) {
+func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 	gvr, err := unstructuredtools.GVR(un)
 	if err != nil {
-		return Info{}, err
+		return nil, err
 	}
 
 	sel, err := g.selectorForGVR(gvr)
 	if err != nil {
-		return Info{}, err
+		return nil, err
 	}
 
 	gvrForDefinitions := schema.GroupVersionResource{
@@ -89,25 +101,31 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (Info, error) {
 			LabelSelector: sel,
 		})
 	if err != nil {
-		return Info{}, err
+		return nil, err
 	}
 
 	switch tot := len(all.Items); {
 	case tot == 0:
-		return Info{},
+		return nil,
 			fmt.Errorf("no definition found for '%v' in namespace: %s", gvr, un.GetNamespace())
 	case tot == 1:
-		url, ok, err := unstructured.NestedString(all.Items[0].Object, "spec", "chartUrl")
+		packageUrl, ok, err := unstructured.NestedString(all.Items[0].Object, "status", "packageUrl")
 		if err != nil {
-			return Info{}, err
+			return nil, err
 		}
 		if !ok {
-			return Info{},
-				fmt.Errorf("missing spec.chartUrl value in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+			return nil,
+				fmt.Errorf("missing status.packageUrl in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
 		}
-		return Info{URL: url}, nil
+
+		packageVersion, _, err := unstructured.NestedString(all.Items[0].Object, "chart", "version")
+		if err != nil {
+			return nil, err
+		}
+
+		return &Info{URL: packageUrl, Version: packageVersion}, nil
 	default:
-		return Info{},
+		return nil,
 			fmt.Errorf("found %d definitions for '%v' in namespace: %s", tot, gvr, un.GetNamespace())
 	}
 }
