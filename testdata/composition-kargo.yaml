@@ -1,0 +1,8 @@
+apiVersion: composition.krateo.io/v12-8-3
+kind: Postgresql
+metadata:
+  name: kargo
+  namespace: krateo-system
+spec:
+  api: 
+    enabled: false
