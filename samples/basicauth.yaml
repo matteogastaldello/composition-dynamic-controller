@@ -1,0 +1,8 @@
+kind: BasicAuth
+apiVersion: test.group.com/v1alpha1
+metadata:
+  name: mybasicauth
+spec:
+  deletionPolicy: Orphan 
+  username: myuser
+  password: mypassword

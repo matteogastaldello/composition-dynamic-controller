@@ -1,0 +1,13 @@
+kind: EnvironmentInstance
+apiVersion: azure.devops.com/v1alpha1
+metadata:
+  name: env-1
+  namespace: default
+spec:
+  deletionPolicy: Orphan 
+  basicAuthRef: basicauth-azure
+  project: pipelineProj
+  organization: matteogastaldello-org
+  api-version: "7.0"
+  name: env-1
+  

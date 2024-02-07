@@ -3,6 +3,7 @@ package unstructured
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/gobuffalo/flect"
@@ -189,4 +190,40 @@ func encodeStruct(obj interface{}) (res interface{}, err error) {
 
 	err = json.Unmarshal(data, &res)
 	return
+}
+
+func IsOnList(key string, value interface{}, list *unstructured.UnstructuredList) (*unstructured.Unstructured, error) {
+	for _, item := range list.Items {
+		field, ok, err := unstructured.NestedFieldNoCopy(item.Object, key)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		if reflect.DeepEqual(field, value) {
+			return &item, nil
+		}
+	}
+	return nil, fmt.Errorf("elem with key %s and value %s not found", key, value)
+}
+
+func GetFieldsFromUnstructured(u *unstructured.Unstructured, field string) (map[string]interface{}, error) {
+	spec, ok, err := unstructured.NestedFieldNoCopy(u.Object, field)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("%s not found", field)
+	}
+	fields := make(map[string]interface{})
+	if reflect.ValueOf(spec).CanInterface() {
+		iter := reflect.ValueOf(spec).MapRange()
+		for iter.Next() {
+			k := iter.Key()
+			v := iter.Value()
+			fields[k.String()] = v.Interface()
+		}
+	}
+	return fields, nil
 }

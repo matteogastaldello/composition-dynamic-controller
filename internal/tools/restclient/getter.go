@@ -1,0 +1,294 @@
+package getter
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/gobuffalo/flect"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/client/restclient"
+	"github.com/krateoplatformops/composition-dynamic-controller/internal/text"
+	unstructuredtools "github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured"
+	"github.com/lucasepe/httplib"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
+)
+
+type VerbsDescription struct {
+	// Name of the action to perform when this api is called
+	Action string `json:"action"`
+	// Method: the http method to use [GET, POST, PUT, DELETE, PATCH]
+	Method string `json:"method"`
+	// Path: the path to the api
+	Path string `json:"path"`
+	// AltFieldMapping: the alternative mapping of the fields to use in the request
+	AltFieldMapping map[string]string `json:"altFieldMapping,omitempty"`
+}
+
+type Resource struct {
+	// Name: the name of the resource to manage
+	Kind string `json:"kind"`
+	// Identifier: the identifier of the resource to manage
+	Identifier string `json:"identifier"`
+	// VerbsDescription: the list of verbs to use on this resource
+	VerbsDescription []VerbsDescription `json:"verbsDescription"`
+}
+
+type Info struct {
+	// URL of the OAS 3.0 JSON file that is being requested.
+	URL string `json:"url"`
+
+	// The resource to manage
+	Resource Resource `json:"resources,omitempty"`
+
+	// The authentication method to use
+	Auth httplib.AuthMethod `json:"auth,omitempty"`
+
+	// Verbose: if true, the client will dump verbose output
+	Verbose bool `json:"verbose,omitempty"`
+}
+
+type Getter interface {
+	Get(un *unstructured.Unstructured) (*Info, error)
+}
+
+func Static(chart string) Getter {
+	return staticGetter{chartName: chart}
+}
+
+func Dynamic(cfg *rest.Config) (Getter, error) {
+	dyn, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dynamicGetter{
+		dynamicClient: dyn,
+	}, nil
+}
+
+var _ Getter = (*staticGetter)(nil)
+
+type staticGetter struct {
+	chartName string
+}
+
+func (pig staticGetter) Get(_ *unstructured.Unstructured) (*Info, error) {
+	return &Info{
+		URL: pig.chartName,
+	}, nil
+}
+
+const (
+	labelKeyGroup    = "krateo.io/crd-group"
+	labelKeyVersion  = "krateo.io/crd-version"
+	labelKeyResource = "krateo.io/crd-resource"
+)
+
+var _ Getter = (*dynamicGetter)(nil)
+
+type dynamicGetter struct {
+	dynamicClient dynamic.Interface
+}
+
+func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
+	gvr, err := unstructuredtools.GVR(un)
+	if err != nil {
+		return nil, err
+	}
+
+	sel, err := selectorForGroup(gvr)
+	if err != nil {
+		return nil, err
+	}
+
+	gvrForDefinitions := schema.GroupVersionResource{
+		Group:    "swaggergen.krateo.io",
+		Version:  "v1alpha1",
+		Resource: "definitions",
+	}
+
+	all, err := g.dynamicClient.Resource(gvrForDefinitions).
+		Namespace(un.GetNamespace()).
+		List(context.Background(), metav1.ListOptions{
+			LabelSelector: sel,
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, item := range all.Items {
+		list, ok, err := unstructured.NestedSlice(item.Object, "spec", "resources")
+		if !ok {
+			return nil, fmt.Errorf("missing spec.resources in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		if err != nil {
+			return nil, err
+		}
+		group, ok, err := unstructured.NestedString(item.Object, "spec", "resourceGroup")
+		if !ok {
+			return nil, fmt.Errorf("missing spec.resourceGroup in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		swaggerPath, ok, err := unstructured.NestedString(item.Object, "spec", "swaggerPath")
+		if !ok {
+			return nil, fmt.Errorf("missing spec.swaggerPath in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if group == gvr.Group {
+			for _, res := range list {
+				gvk := un.GroupVersionKind()
+				// Convert the map to JSON
+				jsonData, err := json.Marshal(res)
+				if err != nil {
+					return nil, err
+				}
+				// Convert the JSON to a struct
+				var resource Resource
+				err = json.Unmarshal(jsonData, &resource)
+				if err != nil {
+					return nil, err
+				}
+
+				auth, err := g.getAuth(un)
+				if err != nil {
+					return nil, err
+				}
+
+				if resource.Kind == gvk.Kind {
+					return &Info{
+						URL:      swaggerPath,
+						Resource: resource,
+						Auth:     auth,
+					}, nil
+				}
+			}
+		}
+	}
+	return nil, nil
+}
+
+// getAuth returns the authentication method for the given resource.
+// It returns an error if the authentication object is not valid.
+func (g *dynamicGetter) getAuth(un *unstructured.Unstructured) (httplib.AuthMethod, error) {
+	gvr, err := unstructuredtools.GVR(un)
+	if err != nil {
+		return nil, err
+	}
+
+	var authRef string
+	var authType restclient.AuthType = restclient.AuthTypeBasic
+	authRef, ok, err := unstructured.NestedString(un.Object, "spec", "basicAuthRef")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		authRef, ok, err = unstructured.NestedString(un.Object, "spec", "bearerAuthRef")
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("missing spec.basicAuthRef or spec.bearerAuthRef in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		authType = restclient.AuthTypeBearer
+	}
+	gvrForAuthentication := schema.GroupVersionResource{
+		Group:    gvr.Group,
+		Version:  "v1alpha1",
+		Resource: strings.ToLower(flect.Pluralize(fmt.Sprintf("%sAuth", text.ToGolangName(authType.String())))),
+	}
+
+	auth, err := g.dynamicClient.Resource(gvrForAuthentication).
+		Namespace(un.GetNamespace()).
+		Get(context.Background(), authRef, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return parseAuthentication(auth, authType)
+}
+
+// parseAuthentication parses the authentication object and returns the appropriate AuthMethod for the given AuthType.
+// It returns an error if the authentication object is not valid.
+func parseAuthentication(un *unstructured.Unstructured, authType restclient.AuthType) (httplib.AuthMethod, error) {
+	gvr, err := unstructuredtools.GVR(un)
+	if err != nil {
+		return nil, err
+	}
+	if authType == restclient.AuthTypeBasic {
+		username, ok, err := unstructured.NestedString(un.Object, "spec", "username")
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("missing spec.username in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		password, ok, err := unstructured.NestedString(un.Object, "spec", "password")
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("missing spec.password in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		return &httplib.BasicAuth{
+			Username: username,
+			Password: password,
+		}, nil
+	} else if authType == restclient.AuthTypeBearer {
+		token, ok, err := unstructured.NestedString(un.Object, "spec", "token")
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("missing spec.token in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		return &httplib.TokenAuth{
+			Token: token,
+		}, nil
+	}
+	return nil, fmt.Errorf("unknown auth type: %s", authType)
+}
+
+func (g *dynamicGetter) selectorForGVR(gvr schema.GroupVersionResource) (string, error) {
+	group, err := labels.NewRequirement(labelKeyGroup, selection.Equals, []string{gvr.Group})
+	if err != nil {
+		return "", err
+	}
+
+	version, err := labels.NewRequirement(labelKeyVersion, selection.Equals, []string{gvr.Version})
+	if err != nil {
+		return "", err
+	}
+
+	resource, err := labels.NewRequirement(labelKeyResource, selection.Equals, []string{gvr.Resource})
+	if err != nil {
+		return "", err
+	}
+
+	selector := labels.NewSelector().Add(*group, *version, *resource)
+
+	return selector.String(), nil
+}
+
+func selectorForGroup(gvr schema.GroupVersionResource) (string, error) {
+	group, err := labels.NewRequirement(labelKeyGroup, selection.Equals, []string{gvr.Group})
+	if err != nil {
+		return "", err
+	}
+	selector := labels.NewSelector().Add(*group)
+
+	return selector.String(), nil
+}

@@ -1,0 +1,8 @@
+kind: BasicAuth
+apiVersion: azure.devops.com/v1alpha1
+metadata:
+  name: basicauth-azure
+spec:
+  deletionPolicy: Orphan 
+  username: admin
+  password: mdwqy67qjp5pzmpx7is6in6xvj3wbvnlwxzsppf63i2r47akxleq

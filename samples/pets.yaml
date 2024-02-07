@@ -1,0 +1,11 @@
+kind: Pet
+apiVersion: test.group.com/v1alpha1
+metadata:
+  name: pet-1
+  namespace: default
+spec:
+  deletionPolicy: Orphan 
+  name: pippo
+  status: available
+  basicAuthRef: mybasicauth
+  
