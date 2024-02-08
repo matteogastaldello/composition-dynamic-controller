@@ -57,7 +57,7 @@ jobs:
           retention-days: 1
 
   package-arm64:
-    runs-on: buildjet-2vcpu-ubuntu-2204-arm
+    runs-on: self-hosted
     permissions:
       packages: write
       contents: read
@@ -105,7 +105,7 @@ jobs:
           retention-days: 1
 
   merge:
-    runs-on: buildjet-2vcpu-ubuntu-2204
+    runs-on: self-hosted
     needs:
       - package-amd64
       - package-arm64
