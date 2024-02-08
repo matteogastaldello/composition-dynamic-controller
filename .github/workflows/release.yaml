@@ -9,7 +9,7 @@ env:
 
 jobs:
   package-amd64:
-    runs-on: buildjet-2vcpu-ubuntu-2204
+    runs-on: self-hosted
     permissions:
       packages: write
       contents: read
