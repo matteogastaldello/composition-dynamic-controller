@@ -2,8 +2,6 @@ module github.com/krateoplatformops/composition-dynamic-controller
 
 go 1.21
 
-toolchain go1.21.1
-
 require (
 	github.com/getkin/kin-openapi v0.123.0
 	github.com/gobuffalo/flect v1.0.2
