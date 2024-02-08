@@ -9,7 +9,7 @@ env:
 
 jobs:
   package-amd64:
-    runs-on: self-hosted
+    runs-on: ubuntu22
     permissions:
       packages: write
       contents: read
@@ -57,7 +57,7 @@ jobs:
           retention-days: 1
 
   package-arm64:
-    runs-on: self-hosted
+    runs-on: ubuntu22
     permissions:
       packages: write
       contents: read
@@ -105,7 +105,7 @@ jobs:
           retention-days: 1
 
   merge:
-    runs-on: self-hosted
+    runs-on: ubuntu22
     needs:
       - package-amd64
       - package-arm64
