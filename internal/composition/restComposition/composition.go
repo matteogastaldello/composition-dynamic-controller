@@ -2,8 +2,6 @@ package composition
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -25,11 +23,6 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
-)
-
-var (
-	errReleaseNotFound  = errors.New("helm release not found")
-	errCreateIncomplete = "cannot determine creation result - remove the " + meta.AnnotationKeyExternalCreatePending + " annotation if it is safe to proceed"
 )
 
 var _ controller.ExternalClient = (*handler)(nil)
@@ -119,6 +112,47 @@ func APICallBuilder(cli *restclient.UnstructuredClient, info *getter.Info, actio
 	return nil, nil, fmt.Errorf("impossible to build api call for action %s", action.String())
 }
 
+func BuildCallConfig(callInfo *CallInfo, statusFields map[string]interface{}, specFields map[string]interface{}) *restclient.RequestConfiguration {
+	reqConfiguration := &restclient.RequestConfiguration{}
+	reqConfiguration.Parameters = make(map[string]string)
+	reqConfiguration.Query = make(map[string]string)
+	mapBody := make(map[string]interface{})
+
+	for field, value := range specFields {
+		f, ok := callInfo.AltFields[field]
+		if ok {
+			field = f
+		}
+		if callInfo.ReqParams.Parameters.Contains(field) {
+			stringVal := fmt.Sprintf("%v", value)
+
+			reqConfiguration.Parameters[field] = stringVal
+		} else if callInfo.ReqParams.Query.Contains(field) {
+			stringVal := fmt.Sprintf("%v", value)
+			reqConfiguration.Query[field] = stringVal
+		} else if callInfo.ReqParams.Body.Contains(field) {
+			mapBody[field] = value
+		}
+	}
+	for field, value := range statusFields {
+		f, ok := callInfo.AltFields[field]
+		if ok {
+			field = f
+		}
+		if callInfo.ReqParams.Parameters.Contains(field) {
+			stringVal := fmt.Sprintf("%v", value)
+			reqConfiguration.Parameters[field] = stringVal
+		} else if callInfo.ReqParams.Query.Contains(field) {
+			stringVal := fmt.Sprintf("%v", value)
+			reqConfiguration.Query[field] = stringVal
+		} else if callInfo.ReqParams.Body.Contains(field) {
+			mapBody[field] = value
+		}
+	}
+	reqConfiguration.Body = mapBody
+	return reqConfiguration
+}
+
 func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (bool, error) {
 	log := h.logger.With().Timestamp().
 		Str("op", "Observe").
@@ -170,43 +204,10 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		log.Err(err).Msg("Building API call")
 		return false, err
 	}
-	reqConfiguration := &restclient.RequestConfiguration{}
-	reqConfiguration.Parameters = make(map[string]string)
-	reqConfiguration.Query = make(map[string]string)
-	mapBody := make(map[string]interface{})
-
-	for field, value := range specFields {
-		f, ok := callInfo.AltFields[field]
-		if ok {
-			field = f
-		}
-		if callInfo.ReqParams.Parameters.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-
-			reqConfiguration.Parameters[field] = stringVal
-		} else if callInfo.ReqParams.Query.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Query[field] = stringVal
-		} else if callInfo.ReqParams.Body.Contains(field) {
-			mapBody[field] = value
-		}
+	reqConfiguration := BuildCallConfig(callInfo, statusFields, specFields)
+	if reqConfiguration == nil {
+		return false, fmt.Errorf("error building call configuration")
 	}
-	for field, value := range statusFields {
-		f, ok := callInfo.AltFields[field]
-		if ok {
-			field = f
-		}
-		if callInfo.ReqParams.Parameters.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Parameters[field] = stringVal
-		} else if callInfo.ReqParams.Query.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Query[field] = stringVal
-		} else if callInfo.ReqParams.Body.Contains(field) {
-			mapBody[field] = value
-		}
-	}
-
 	body, err := apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
 	if httplib.IsNotFoundError(err) {
 		log.Debug().Str("Resource", mg.GetKind()).Msg("External resource not found.")
@@ -282,34 +283,7 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 		log.Err(err).Msg("Building API call")
 		return err
 	}
-	reqConfiguration := &restclient.RequestConfiguration{}
-	reqConfiguration.Parameters = make(map[string]string)
-	reqConfiguration.Query = make(map[string]string)
-	mapBody := make(map[string]interface{})
-	for field, value := range specFields {
-		if callInfo.ReqParams.Parameters.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Parameters[field] = stringVal
-		} else if callInfo.ReqParams.Query.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Query[field] = stringVal
-		} else if callInfo.ReqParams.Body.Contains(field) {
-			mapBody[field] = value
-		}
-	}
-	jsonBody, err := json.Marshal(mapBody)
-	if err != nil {
-		log.Err(err).Msg("Marshalling body")
-		return err
-	}
-	fmt.Println(string(jsonBody))
-	err = json.Unmarshal(jsonBody, &reqConfiguration.Body)
-	if err != nil {
-		log.Err(err).Msg("Unmarshalling body")
-		return err
-	}
-
-	reqConfiguration.Body = mapBody
+	reqConfiguration := BuildCallConfig(callInfo, nil, specFields)
 	body, err := apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
 	if err != nil {
 		log.Err(err).Msg("Performing REST call")
@@ -430,36 +404,35 @@ func (h *handler) Delete(ctx context.Context, mg *unstructured.Unstructured) err
 		log.Err(err).Msg("Getting spec")
 		return err
 	}
+	statusFields, err := unstructuredtools.GetFieldsFromUnstructured(mg, "status")
+	if err != nil {
+		log.Err(err).Msg("Getting status")
+		return err
+	}
 	apiCall, callInfo, err := APICallBuilder(cli, clientInfo, apiaction.Delete)
 	if err != nil {
 		log.Err(err).Msg("Building API call")
 		return err
 	}
-	reqConfiguration := &restclient.RequestConfiguration{}
-	reqConfiguration.Parameters = make(map[string]string)
-	reqConfiguration.Query = make(map[string]string)
-	mapBody := make(map[string]interface{})
-	for field, value := range specFields {
-		if callInfo.ReqParams.Parameters.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Parameters[field] = stringVal
-		} else if callInfo.ReqParams.Query.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Query[field] = stringVal
-		} else if callInfo.ReqParams.Body.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			mapBody[field] = stringVal
-		}
+	reqConfiguration := BuildCallConfig(callInfo, statusFields, specFields)
+	if reqConfiguration == nil {
+		return fmt.Errorf("error building call configuration")
 	}
-	// jsonBody, err := json.Marshal(mapBody)
-	// if err != nil {
-	// 	log.Err(err).Msg("Marshalling body")
-	// 	return err
-	// }
-	// err = json.Unmarshal(jsonBody, &reqConfiguration.Body)
-	// if err != nil {
-	// 	log.Err(err).Msg("Unmarshalling body")
-	// 	return err
+	// reqConfiguration := &restclient.RequestConfiguration{}
+	// reqConfiguration.Parameters = make(map[string]string)
+	// reqConfiguration.Query = make(map[string]string)
+	// mapBody := make(map[string]interface{})
+	// for field, value := range specFields {
+	// 	if callInfo.ReqParams.Parameters.Contains(field) {
+	// 		stringVal := fmt.Sprintf("%v", value)
+	// 		reqConfiguration.Parameters[field] = stringVal
+	// 	} else if callInfo.ReqParams.Query.Contains(field) {
+	// 		stringVal := fmt.Sprintf("%v", value)
+	// 		reqConfiguration.Query[field] = stringVal
+	// 	} else if callInfo.ReqParams.Body.Contains(field) {
+	// 		stringVal := fmt.Sprintf("%v", value)
+	// 		mapBody[field] = stringVal
+	// 	}
 	// }
 	body, err := apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
 	if err != nil {
