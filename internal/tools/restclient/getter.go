@@ -39,6 +39,9 @@ type Resource struct {
 	Identifier string `json:"identifier"`
 	// VerbsDescription: the list of verbs to use on this resource
 	VerbsDescription []VerbsDescription `json:"verbsDescription"`
+	// CompareList: the list of fields to compare when checking if the resource is the same
+	// +optional
+	CompareList []string `json:"compareList,omitempty"`
 }
 
 type Info struct {
@@ -123,9 +126,12 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(all.Items) == 0 {
+		return nil, fmt.Errorf("no definitions found for '%v' in namespace: %s", gvr, un.GetNamespace())
+	}
 
 	for _, item := range all.Items {
-		list, ok, err := unstructured.NestedSlice(item.Object, "spec", "resources")
+		res, ok, err := unstructured.NestedFieldNoCopy(item.Object, "spec", "resource")
 		if !ok {
 			return nil, fmt.Errorf("missing spec.resources in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
 		}
@@ -149,33 +155,33 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 		}
 
 		if group == gvr.Group {
-			for _, res := range list {
-				gvk := un.GroupVersionKind()
-				// Convert the map to JSON
-				jsonData, err := json.Marshal(res)
-				if err != nil {
-					return nil, err
-				}
-				// Convert the JSON to a struct
-				var resource Resource
-				err = json.Unmarshal(jsonData, &resource)
-				if err != nil {
-					return nil, err
-				}
-
-				auth, err := g.getAuth(un)
-				if err != nil {
-					return nil, err
-				}
-
-				if resource.Kind == gvk.Kind {
-					return &Info{
-						URL:      swaggerPath,
-						Resource: resource,
-						Auth:     auth,
-					}, nil
-				}
+			// for _, res := range list {
+			gvk := un.GroupVersionKind()
+			// Convert the map to JSON
+			jsonData, err := json.Marshal(res)
+			if err != nil {
+				return nil, err
 			}
+			// Convert the JSON to a struct
+			var resource Resource
+			err = json.Unmarshal(jsonData, &resource)
+			if err != nil {
+				return nil, err
+			}
+
+			auth, err := g.getAuth(un)
+			if err != nil {
+				return nil, err
+			}
+
+			if resource.Kind == gvk.Kind {
+				return &Info{
+					URL:      swaggerPath,
+					Resource: resource,
+					Auth:     auth,
+				}, nil
+			}
+			// }
 		}
 	}
 	return nil, nil
@@ -191,20 +197,43 @@ func (g *dynamicGetter) getAuth(un *unstructured.Unstructured) (httplib.AuthMeth
 
 	var authRef string
 	var authType restclient.AuthType = restclient.AuthTypeBasic
-	authRef, ok, err := unstructured.NestedString(un.Object, "spec", "basicAuthRef")
+
+	authenticationRefsMap, ok, err := unstructured.NestedStringMap(un.Object, "spec", "authenticationRefs")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting spec.authenticationRefs for '%v' in namespace: %s", gvr, un.GetNamespace())
 	}
 	if !ok {
-		authRef, ok, err = unstructured.NestedString(un.Object, "spec", "bearerAuthRef")
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, fmt.Errorf("missing spec.basicAuthRef or spec.bearerAuthRef in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
-		}
-		authType = restclient.AuthTypeBearer
+		return nil, fmt.Errorf("missing spec.authenticationRefs in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
 	}
+
+	for key, _ := range authenticationRefsMap {
+		authRef, ok, err = unstructured.NestedString(un.Object, "spec", "authenticationRefs", key)
+		if err != nil {
+			return nil, fmt.Errorf("error getting spec.authenticationRefs.%s for '%v' in namespace: %s", key, gvr, un.GetNamespace())
+		}
+		if ok {
+			authType, err = restclient.ToType(strings.Split(key, "AuthRef")[0])
+			if err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
+
+	// authRef, ok, err = unstructured.NestedString(un.Object, "spec", "basicAuthRef")
+	// if err != nil {
+	// 	return nil, fmt.Errorf()
+	// }
+	// if !ok {
+	// 	authRef, ok, err = unstructured.NestedString(un.Object, "spec", "bearerAuthRef")
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	if !ok {
+	// 		return nil, fmt.Errorf("missing spec.basicAuthRef or spec.bearerAuthRef in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+	// 	}
+	// 	authType = restclient.AuthTypeBearer
+	// }
 	gvrForAuthentication := schema.GroupVersionResource{
 		Group:    gvr.Group,
 		Version:  "v1alpha1",

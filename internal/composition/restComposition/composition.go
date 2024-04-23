@@ -4,8 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/gobuffalo/flect"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/client/restclient"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/controller"
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/meta"
@@ -20,6 +24,7 @@ import (
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools"
 	unstructuredtools "github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -170,6 +175,9 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		log.Err(err).Msg("Getting REST client info")
 		return false, err
 	}
+	if clientInfo == nil {
+		return false, fmt.Errorf("swagger info is nil")
+	}
 
 	cli, err := restclient.BuildClient(clientInfo.URL)
 	if err != nil {
@@ -227,7 +235,21 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 				log.Err(err).Msg("Setting identifier")
 				return false, err
 			}
+			break
 		}
+	}
+
+	ok, err := isCRUpdated(clientInfo.Resource, mg, *body)
+	if err != nil {
+		log.Err(err).Msg("Checking if CR is updated")
+		return false, err
+	}
+
+	if !ok {
+		return true, apierrors.NewNotFound(schema.GroupResource{
+			Group:    mg.GroupVersionKind().Group,
+			Resource: flect.Pluralize(strings.ToLower(mg.GetKind())),
+		}, mg.GetName())
 	}
 
 	err = tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
@@ -245,6 +267,39 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	//		Group:    mg.GroupVersionKind().Group,
 	//		Resource: flect.Pluralize(strings.ToLower(mg.GetKind())),
 	//	}, mg.GetName())
+}
+
+func isCRUpdated(def getter.Resource, mg *unstructured.Unstructured, rm map[string]interface{}) (bool, error) {
+	specs, err := unstructuredtools.GetFieldsFromUnstructured(mg, "spec")
+	if err != nil {
+		return false, fmt.Errorf("error getting spec fields: %w", err)
+	}
+	if len(def.CompareList) > 0 {
+		for _, field := range def.CompareList {
+			if _, ok := rm[field]; !ok {
+				return false, fmt.Errorf("field %s not found in response", field)
+			}
+			if !reflect.DeepEqual(specs[field], rm[field]) {
+				fmt.Println("\n\nfield: ", field, " is different\n\n")
+				return false, nil
+			}
+
+		}
+		return true, nil
+	}
+
+	for k, v := range specs {
+		if _, ok := rm[k]; !ok {
+			fmt.Printf("skipping field: %s\n", k)
+			continue
+		}
+		if !reflect.DeepEqual(v, rm[k]) {
+			fmt.Println("\n\nfield: ", k, " is different\n\n")
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) error {
@@ -292,6 +347,9 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	if body == nil {
 		return fmt.Errorf("response body is nil")
 	}
+
+	// fmt.Println("identifier field is: ", callInfo.IdentifierField)
+
 	for k, v := range *body {
 		if k == callInfo.IdentifierField {
 			err = unstructured.SetNestedField(mg.Object, text.GenericToString(v), "status", callInfo.IdentifierField)

@@ -51,7 +51,7 @@ const (
 func (a AuthType) String() string {
 	return string(a)
 }
-func (AuthType) ToType(ty string) (AuthType, error) {
+func ToType(ty string) (AuthType, error) {
 	switch ty {
 	case "basic":
 		return AuthTypeBasic, nil

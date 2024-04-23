@@ -97,7 +97,7 @@ func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 	}
 
 	if !exists {
-		fmt.Println("Create: ", ref.String())
+		// fmt.Println("Create: ", ref.String())
 		//return c.externalClient.Create(ctx, el)
 		c.queue.AddAfter(event{
 			eventType: Create,
