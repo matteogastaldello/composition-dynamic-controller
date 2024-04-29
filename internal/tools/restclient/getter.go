@@ -44,6 +44,28 @@ type Resource struct {
 	CompareList []string `json:"compareList,omitempty"`
 }
 
+type GVK struct {
+	// Group: the group of the resource
+	// +optional
+	Group string `json:"group,omitempty"`
+	// Version: the version of the resource
+	// +optional
+	Version string `json:"version,omitempty"`
+	// Kind: the kind of the resource
+	// +optional
+	Kind string `json:"kind,omitempty"`
+}
+
+type ReferenceInfo struct {
+	// Field: the field to use as reference - represents the id of the resource
+	// +optional
+	Field string `json:"field,omitempty"`
+
+	// GVK: the group, version, kind of the resource
+	// +optional
+	GroupVersionKind GVK `json:"groupVersionKind,omitempty"`
+}
+
 type Info struct {
 	// URL of the OAS 3.0 JSON file that is being requested.
 	URL string `json:"url"`
@@ -56,6 +78,9 @@ type Info struct {
 
 	// Verbose: if true, the client will dump verbose output
 	Verbose bool `json:"verbose,omitempty"`
+
+	// OwnerReferences: the list of owner references to use when creating the resource
+	OwnerReferences []ReferenceInfo `json:"ownerReferences,omitempty"`
 }
 
 type Getter interface {
@@ -138,6 +163,7 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		group, ok, err := unstructured.NestedString(item.Object, "spec", "resourceGroup")
 		if !ok {
 			return nil, fmt.Errorf("missing spec.resourceGroup in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
@@ -152,6 +178,30 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 		}
 		if err != nil {
 			return nil, err
+		}
+
+		ownerRefs, ok, err := unstructured.NestedSlice(item.Object, "spec", "resource", "ownerRefs")
+		if !ok {
+			return nil, fmt.Errorf("missing spec.resource.ownerRefs in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		var ownerReferences []ReferenceInfo
+
+		for _, ownerRef := range ownerRefs {
+			jsonData, err := json.Marshal(ownerRef)
+			if err != nil {
+				return nil, err
+			}
+			var ref ReferenceInfo
+			err = json.Unmarshal(jsonData, &ref)
+			if err != nil {
+				return nil, err
+			}
+
+			ownerReferences = append(ownerReferences, ref)
 		}
 
 		if group == gvr.Group {
@@ -176,9 +226,10 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 
 			if resource.Kind == gvk.Kind {
 				return &Info{
-					URL:      swaggerPath,
-					Resource: resource,
-					Auth:     auth,
+					URL:             swaggerPath,
+					Resource:        resource,
+					Auth:            auth,
+					OwnerReferences: ownerReferences,
 				}, nil
 			}
 			// }

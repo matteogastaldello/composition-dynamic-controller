@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -52,110 +53,10 @@ func NewHandler(cfg *rest.Config, log *zerolog.Logger, swg getter.Getter) contro
 }
 
 type handler struct {
-	logger              *zerolog.Logger
-	dynamicClient       dynamic.Interface
-	discoveryClient     *discovery.DiscoveryClient
-	openapiFileLocation string
-	swaggerInfoGetter   getter.Getter
-}
-
-type RequestedParams struct {
-	Parameters text.StringSet
-	Query      text.StringSet
-	Body       text.StringSet
-}
-
-type CallInfo struct {
-	Path            string
-	ReqParams       *RequestedParams
-	IdentifierField string
-	AltFields       map[string]string
-}
-
-type APIFuncDef func(ctx context.Context, cli *http.Client, path string, conf *restclient.RequestConfiguration) (*map[string]interface{}, error)
-
-func APICallBuilder(cli *restclient.UnstructuredClient, info *getter.Info, action apiaction.APIAction) (apifunc APIFuncDef, callInfo *CallInfo, err error) {
-	identifierField := info.Resource.Identifier
-	for _, descr := range info.Resource.VerbsDescription {
-		if strings.EqualFold(descr.Action, action.String()) {
-			method, err := restclient.StringToApiCallType(descr.Method)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error converting method to api call type: %s", err)
-			}
-			params, query, err := cli.RequestedParams(descr.Method, descr.Path)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error retrieving requested params: %s", err)
-			}
-			var body text.StringSet
-			if descr.Method == "POST" || descr.Method == "PUT" || descr.Method == "PATCH" {
-				body, err = cli.RequestedBody(descr.Method, descr.Path)
-				if err != nil {
-					return nil, nil, fmt.Errorf("error retrieving requested body params: %s", err)
-				}
-			}
-
-			callInfo := &CallInfo{
-				Path: descr.Path,
-				ReqParams: &RequestedParams{
-					Parameters: params,
-					Query:      query,
-					Body:       body,
-				},
-				AltFields:       descr.AltFieldMapping,
-				IdentifierField: identifierField,
-			}
-			switch method {
-			case restclient.APICallsTypeGet:
-				return cli.Get, callInfo, nil
-			case restclient.APICallsTypePost:
-				return cli.Post, callInfo, nil
-			case restclient.APICallsTypeList:
-				return cli.List, callInfo, nil
-			}
-		}
-	}
-	return nil, nil, fmt.Errorf("impossible to build api call for action %s", action.String())
-}
-
-func BuildCallConfig(callInfo *CallInfo, statusFields map[string]interface{}, specFields map[string]interface{}) *restclient.RequestConfiguration {
-	reqConfiguration := &restclient.RequestConfiguration{}
-	reqConfiguration.Parameters = make(map[string]string)
-	reqConfiguration.Query = make(map[string]string)
-	mapBody := make(map[string]interface{})
-
-	for field, value := range specFields {
-		f, ok := callInfo.AltFields[field]
-		if ok {
-			field = f
-		}
-		if callInfo.ReqParams.Parameters.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-
-			reqConfiguration.Parameters[field] = stringVal
-		} else if callInfo.ReqParams.Query.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Query[field] = stringVal
-		} else if callInfo.ReqParams.Body.Contains(field) {
-			mapBody[field] = value
-		}
-	}
-	for field, value := range statusFields {
-		f, ok := callInfo.AltFields[field]
-		if ok {
-			field = f
-		}
-		if callInfo.ReqParams.Parameters.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Parameters[field] = stringVal
-		} else if callInfo.ReqParams.Query.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Query[field] = stringVal
-		} else if callInfo.ReqParams.Body.Contains(field) {
-			mapBody[field] = value
-		}
-	}
-	reqConfiguration.Body = mapBody
-	return reqConfiguration
+	logger            *zerolog.Logger
+	dynamicClient     dynamic.Interface
+	discoveryClient   *discovery.DiscoveryClient
+	swaggerInfoGetter getter.Getter
 }
 
 func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (bool, error) {
@@ -169,7 +70,6 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	if h.swaggerInfoGetter == nil {
 		return false, fmt.Errorf("swagger file info getter must be specified")
 	}
-
 	clientInfo, err := h.swaggerInfoGetter.Get(mg)
 	if err != nil {
 		log.Err(err).Msg("Getting REST client info")
@@ -178,6 +78,27 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	if clientInfo == nil {
 		return false, fmt.Errorf("swagger info is nil")
 	}
+
+	for _, ownerRef := range clientInfo.OwnerReferences {
+		ref, err := resolveObjectFromReferenceInfo(ownerRef, mg, h.dynamicClient)
+		if err != nil {
+			log.Err(err).Msg("Resolving reference")
+			return false, err
+		}
+		mg.SetOwnerReferences([]metav1.OwnerReference{
+			{
+				APIVersion: ref.GetAPIVersion(),
+				Kind:       ref.GetKind(),
+				Name:       ref.GetName(),
+				UID:        ref.GetUID(),
+			},
+		})
+	}
+
+	tools.Update(ctx, mg, tools.UpdateOptions{
+		DiscoveryClient: h.discoveryClient,
+		DynamicClient:   h.dynamicClient,
+	})
 
 	cli, err := restclient.BuildClient(clientInfo.URL)
 	if err != nil {
@@ -269,39 +190,6 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	//	}, mg.GetName())
 }
 
-func isCRUpdated(def getter.Resource, mg *unstructured.Unstructured, rm map[string]interface{}) (bool, error) {
-	specs, err := unstructuredtools.GetFieldsFromUnstructured(mg, "spec")
-	if err != nil {
-		return false, fmt.Errorf("error getting spec fields: %w", err)
-	}
-	if len(def.CompareList) > 0 {
-		for _, field := range def.CompareList {
-			if _, ok := rm[field]; !ok {
-				return false, fmt.Errorf("field %s not found in response", field)
-			}
-			if !reflect.DeepEqual(specs[field], rm[field]) {
-				fmt.Println("\n\nfield: ", field, " is different\n\n")
-				return false, nil
-			}
-
-		}
-		return true, nil
-	}
-
-	for k, v := range specs {
-		if _, ok := rm[k]; !ok {
-			fmt.Printf("skipping field: %s\n", k)
-			continue
-		}
-		if !reflect.DeepEqual(v, rm[k]) {
-			fmt.Println("\n\nfield: ", k, " is different\n\n")
-			return false, nil
-		}
-	}
-
-	return true, nil
-}
-
 func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) error {
 	log := h.logger.With().Timestamp().
 		Str("op", "Create").
@@ -347,8 +235,6 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	if body == nil {
 		return fmt.Errorf("response body is nil")
 	}
-
-	// fmt.Println("identifier field is: ", callInfo.IdentifierField)
 
 	for k, v := range *body {
 		if k == callInfo.IdentifierField {
