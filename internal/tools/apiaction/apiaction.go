@@ -13,6 +13,7 @@ const (
 	Delete APIAction = "delete"
 	List   APIAction = "list"
 	Get    APIAction = "get"
+	FindBy APIAction = "findby"
 )
 
 func StringToProviderRuntimeToAction(action string) (APIAction, error) {
@@ -26,6 +27,8 @@ func StringToProviderRuntimeToAction(action string) (APIAction, error) {
 		return Delete, nil
 	case "list":
 		return List, nil
+	case "findby":
+		return FindBy, nil
 	}
 	return "", fmt.Errorf("invalid action %s", action)
 }

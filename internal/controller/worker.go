@@ -92,7 +92,6 @@ func (c *Controller) handleObserve(ctx context.Context, ref ObjectRef) error {
 			})
 			return nil
 		}
-
 		return err
 	}
 

@@ -20,9 +20,12 @@ import (
 type APICallType string
 
 const (
-	APICallsTypeGet  APICallType = "get"
-	APICallsTypePost APICallType = "post"
-	APICallsTypeList APICallType = "list"
+	APICallsTypeGet    APICallType = "get"
+	APICallsTypePost   APICallType = "post"
+	APICallsTypeList   APICallType = "list"
+	APICallsTypeDelete APICallType = "delete"
+	APICallsTypePatch  APICallType = "patch"
+	APICallsTypeFindBy APICallType = "findby"
 )
 
 func (a APICallType) String() string {
@@ -37,6 +40,12 @@ func StringToApiCallType(ty string) (APICallType, error) {
 		return APICallsTypePost, nil
 	case "list":
 		return APICallsTypeList, nil
+	case "delete":
+		return APICallsTypeDelete, nil
+	case "patch":
+		return APICallsTypePatch, nil
+	case "findby":
+		return APICallsTypeFindBy, nil
 	}
 	return "", fmt.Errorf("unknown api call type: %s", ty)
 }

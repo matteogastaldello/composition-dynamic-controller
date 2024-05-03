@@ -20,7 +20,6 @@ import (
 	"github.com/lucasepe/httplib"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/krateoplatformops/composition-dynamic-controller/internal/tools"
 	unstructuredtools "github.com/krateoplatformops/composition-dynamic-controller/internal/tools/unstructured"
@@ -114,65 +113,83 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 		return false, err
 	}
 	statusFields, err := unstructuredtools.GetFieldsFromUnstructured(mg, "status")
-	if err == fmt.Errorf("%s not found", "status") {
-		log.Debug().Str("Resource", mg.GetKind()).Msg("External resource not created yet.")
-		return false, nil
-	}
 	if err != nil {
-		log.Err(err).Msg("Getting status")
-		return false, nil
+		log.Warn().AnErr("Getting status", err)
+		// return false, nil
 	}
+	var body *map[string]interface{}
+	isKnown := false
 	// If status is empty, the resource is not created yet.
-	if statusFields[clientInfo.Resource.Identifier] == nil {
-		log.Debug().Str("Resource", mg.GetKind()).Msg("External resource not created yet.")
-		return false, nil
-	}
-
-	apiCall, callInfo, err := APICallBuilder(cli, clientInfo, apiaction.Get)
-	if err != nil {
-		log.Err(err).Msg("Building API call")
-		return false, err
-	}
-	reqConfiguration := BuildCallConfig(callInfo, statusFields, specFields)
-	if reqConfiguration == nil {
-		return false, fmt.Errorf("error building call configuration")
-	}
-	body, err := apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
-	if httplib.IsNotFoundError(err) {
-		log.Debug().Str("Resource", mg.GetKind()).Msg("External resource not found.")
-		return false, nil
-	}
-	if err != nil {
-		log.Err(err).Msg("Performing REST call")
-		return false, err
-	}
-	if body == nil {
-		return false, fmt.Errorf("response body is nil")
-	}
-	for k, v := range *body {
-		if k == callInfo.IdentifierField {
-			err = unstructured.SetNestedField(mg.Object, text.GenericToString(v), "status", callInfo.IdentifierField)
-			if err != nil {
-				log.Err(err).Msg("Setting identifier")
-				return false, err
-			}
+	for _, identifier := range clientInfo.Resource.Identifiers {
+		if statusFields[identifier] != nil {
+			isKnown = true
 			break
 		}
 	}
-
-	ok, err := isCRUpdated(clientInfo.Resource, mg, *body)
-	if err != nil {
-		log.Err(err).Msg("Checking if CR is updated")
-		return false, err
+	if isKnown {
+		// Getting the external resource by its identifier
+		apiCall, callInfo, err := APICallBuilder(cli, clientInfo, apiaction.Get)
+		if err != nil {
+			log.Err(err).Msg("Building API call")
+			return false, err
+		}
+		reqConfiguration := BuildCallConfig(callInfo, statusFields, specFields)
+		if reqConfiguration == nil {
+			return false, fmt.Errorf("error building call configuration")
+		}
+		body, err = apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
+		if httplib.IsNotFoundError(err) {
+			log.Debug().Str("Resource", mg.GetKind()).Msg("External resource not found.")
+			return false, nil
+		}
+		if err != nil {
+			log.Err(err).Msg("Performing REST call")
+			return false, err
+		}
+		if body == nil {
+			return false, fmt.Errorf("response body is nil")
+		}
+	} else {
+		apiCall, callInfo, err := APICallBuilder(cli, clientInfo, apiaction.FindBy)
+		if err != nil {
+			log.Err(err).Msg("Building API call")
+			return false, err
+		}
+		reqConfiguration := BuildCallConfig(callInfo, statusFields, specFields)
+		if reqConfiguration == nil {
+			return false, fmt.Errorf("error building call configuration")
+		}
+		for _, identifier := range callInfo.IdentifierFields { //da rivedere la costruzione della query con i vari parametri.
+			if strIdentifier, ok := specFields[identifier].(string); ok {
+				reqConfiguration.Query[identifier] = strIdentifier
+			}
+		}
+		body, err = apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
+		if httplib.IsNotFoundError(err) {
+			log.Debug().Str("Resource", mg.GetKind()).Msg("External resource not found.")
+			return false, nil
+		}
+		if err != nil {
+			log.Err(err).Msg("Performing REST call")
+			return false, err
+		}
+		if body == nil {
+			return false, fmt.Errorf("response body is nil")
+		}
 	}
 
-	if !ok {
-		return true, apierrors.NewNotFound(schema.GroupResource{
-			Group:    mg.GroupVersionKind().Group,
-			Resource: flect.Pluralize(strings.ToLower(mg.GetKind())),
-		}, mg.GetName())
+	for k, v := range *body {
+		for _, identifier := range clientInfo.Resource.Identifiers {
+			if k == identifier {
+				err = unstructured.SetNestedField(mg.Object, text.GenericToString(v), "status", identifier)
+				if err != nil {
+					log.Err(err).Msg("Setting identifier")
+					return false, err
+				}
+				break
+			}
+		}
 	}
-
 	err = tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
@@ -180,6 +197,19 @@ func (h *handler) Observe(ctx context.Context, mg *unstructured.Unstructured) (b
 	if err != nil {
 		log.Err(err).Msg("Updating status")
 		return false, err
+	}
+
+	ok, err := isCRUpdated(clientInfo.Resource, mg, *body)
+	if err != nil {
+		log.Err(err).Msg("Checking if CR is updated")
+		return false, err
+	}
+	if !ok {
+		log.Debug().Str("Resource", mg.GetKind()).Msg("External resource not up-to-date.")
+		return true, apierrors.NewNotFound(schema.GroupResource{
+			Group:    mg.GroupVersionKind().Group,
+			Resource: flect.Pluralize(strings.ToLower(mg.GetKind())),
+		}, mg.GetName())
 	}
 
 	log.Debug().Str("Resource", mg.GetKind()).Msg("External resource up-to-date.")
@@ -237,11 +267,13 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 	}
 
 	for k, v := range *body {
-		if k == callInfo.IdentifierField {
-			err = unstructured.SetNestedField(mg.Object, text.GenericToString(v), "status", callInfo.IdentifierField)
-			if err != nil {
-				log.Err(err).Msg("Setting identifier")
-				return err
+		for _, identifier := range clientInfo.Resource.Identifiers {
+			if k == identifier {
+				err = unstructured.SetNestedField(mg.Object, text.GenericToString(v), "status", identifier)
+				if err != nil {
+					log.Err(err).Msg("Setting identifier")
+					return err
+				}
 			}
 		}
 	}
@@ -261,70 +293,96 @@ func (h *handler) Create(ctx context.Context, mg *unstructured.Unstructured) err
 }
 
 func (h *handler) Update(ctx context.Context, mg *unstructured.Unstructured) error {
-	// log := h.logger.With().
-	// 	Str("op", "Update").
-	// 	Str("apiVersion", mg.GetAPIVersion()).
-	// 	Str("kind", mg.GetKind()).
-	// 	Str("name", mg.GetName()).
-	// 	Str("namespace", mg.GetNamespace()).Logger()
+	log := h.logger.With().
+		Str("op", "Update").
+		Str("apiVersion", mg.GetAPIVersion()).
+		Str("kind", mg.GetKind()).
+		Str("name", mg.GetName()).
+		Str("namespace", mg.GetNamespace()).Logger()
 
-	// log.Debug().Msg("Handling composition values update.")
+	log.Debug().Msg("Handling composition values update.")
+	if h.swaggerInfoGetter == nil {
+		return fmt.Errorf("swagger info getter must be specified")
+	}
 
-	// // If we started but never completed creation of an external resource we
-	// // may have lost critical information.The safest thing to
-	// // do is to refuse to proceed.
-	// if meta.ExternalCreateIncomplete(mg) {
-	// 	log.Warn().Msg(errCreateIncomplete)
-	// 	_ = unstructuredtools.SetCondition(mg, condition.Creating())
+	clientInfo, err := h.swaggerInfoGetter.Get(mg)
+	if err != nil {
+		log.Err(err).Msg("Getting REST client info")
+		return err
+	}
 
-	// 	return tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
-	// 		DiscoveryClient: h.discoveryClient,
-	// 		DynamicClient:   h.dynamicClient,
-	// 	})
-	// }
+	cli, err := restclient.BuildClient(clientInfo.URL)
+	if err != nil {
+		log.Err(err).Msg("Building REST client")
+		return err
+	}
+	cli.Auth = clientInfo.Auth
+	cli.Verbose = meta.IsVerbose(mg)
 
-	// meta.SetExternalCreatePending(mg, time.Now())
-	// err := tools.Update(ctx, mg, tools.UpdateOptions{
-	// 	DiscoveryClient: h.discoveryClient,
-	// 	DynamicClient:   h.dynamicClient,
-	// })
-	// if err != nil {
-	// 	log.Err(err).Msg("Setting meta create pending annotation.")
-	// 	return err
-	// }
+	specFields, err := unstructuredtools.GetFieldsFromUnstructured(mg, "spec")
+	if err != nil {
+		log.Err(err).Msg("Getting spec")
+		return err
+	}
+	apiCall, callInfo, err := APICallBuilder(cli, clientInfo, apiaction.Update)
+	if err != nil {
+		log.Err(err).Msg("Building API call")
+		return err
+	}
 
-	// if h.packageInfoGetter == nil {
-	// 	return fmt.Errorf("helm chart package info getter must be specified")
-	// }
+	statusFields, err := unstructuredtools.GetFieldsFromUnstructured(mg, "status")
+	if err == fmt.Errorf("%s not found", "status") {
+		log.Debug().Str("Resource", mg.GetKind()).Msg("External resource not created yet.")
+		return err
+	}
+	reqConfiguration := BuildCallConfig(callInfo, statusFields, specFields)
+	body, err := apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
+	if err != nil {
+		log.Err(err).Msg("Performing REST call")
+		return err
+	}
+	if body == nil {
+		return fmt.Errorf("response body is nil")
+	}
 
-	// hc, err := h.helmClientForResource(mg)
-	// if err != nil {
-	// 	log.Err(err).Msg("Getting helm client")
-	// 	return err
-	// }
+	for k, v := range *body {
+		for _, identifier := range clientInfo.Resource.Identifiers {
+			if k == identifier {
+				err = unstructured.SetNestedField(mg.Object, text.GenericToString(v), "status", identifier)
+				if err != nil {
+					log.Err(err).Msg("Setting identifier")
+					return err
+				}
+			}
+		}
+	}
 
-	// pkg, err := h.packageInfoGetter.Get(mg)
-	// if err != nil {
-	// 	log.Err(err).Msg("Getting package info")
-	// 	return err
-	// }
+	log.Debug().Str("Resource", mg.GetKind()).Msg("Creating external resource.")
 
-	// err = helmchart.Update(ctx, helmchart.UpdateOptions{
-	// 	HelmClient: hc,
-	// 	ChartName:  pkg.URL,
-	// 	Resource:   mg,
-	// })
-	// if err != nil {
-	// 	log.Err(err).Msg("Performing helm chart update")
-	// 	return err
-	// }
-
-	// log.Debug().Str("package", pkg.URL).Msg("Composition values updated.")
+	err = tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
+		DiscoveryClient: h.discoveryClient,
+		DynamicClient:   h.dynamicClient,
+	})
+	if err != nil {
+		log.Err(err).Msg("Updating status")
+		return err
+	}
+	log.Debug().Str("kind", mg.GetKind()).Msg("Composition values updated.")
 
 	return nil
+
 }
 
 func (h *handler) Delete(ctx context.Context, mg *unstructured.Unstructured) error {
+	log := h.logger.With().
+		Str("op", "Delete").
+		Str("apiVersion", mg.GetAPIVersion()).
+		Str("kind", mg.GetKind()).
+		Str("name", mg.GetName()).
+		Str("namespace", mg.GetNamespace()).Logger()
+
+	log.Debug().Msg("Handling composition values deletion.")
+
 	if h.swaggerInfoGetter == nil {
 		return fmt.Errorf("swagger info getter must be specified")
 	}
@@ -362,48 +420,23 @@ func (h *handler) Delete(ctx context.Context, mg *unstructured.Unstructured) err
 	if reqConfiguration == nil {
 		return fmt.Errorf("error building call configuration")
 	}
-	// reqConfiguration := &restclient.RequestConfiguration{}
-	// reqConfiguration.Parameters = make(map[string]string)
-	// reqConfiguration.Query = make(map[string]string)
-	// mapBody := make(map[string]interface{})
-	// for field, value := range specFields {
-	// 	if callInfo.ReqParams.Parameters.Contains(field) {
-	// 		stringVal := fmt.Sprintf("%v", value)
-	// 		reqConfiguration.Parameters[field] = stringVal
-	// 	} else if callInfo.ReqParams.Query.Contains(field) {
-	// 		stringVal := fmt.Sprintf("%v", value)
-	// 		reqConfiguration.Query[field] = stringVal
-	// 	} else if callInfo.ReqParams.Body.Contains(field) {
-	// 		stringVal := fmt.Sprintf("%v", value)
-	// 		mapBody[field] = stringVal
-	// 	}
+
+	_, err = apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
+	// if err != nil {
+	// 	log.Err(err).Msg("Performing REST call")
+	// 	return err
 	// }
-	body, err := apiCall(ctx, http.DefaultClient, callInfo.Path, reqConfiguration)
-	if err != nil {
-		log.Err(err).Msg("Performing REST call")
-		return err
-	}
-	if body == nil {
-		return fmt.Errorf("response body is nil")
-	}
-	for k, v := range *body {
-		if k == callInfo.IdentifierField {
-			err = unstructured.SetNestedField(mg.Object, v, "status", callInfo.IdentifierField)
-			if err != nil {
-				log.Err(err).Msg("Setting identifier")
-				return err
-			}
-		}
-	}
 
-	log.Debug().Str("Resource", mg.GetKind()).Msg("Creating external resource.")
+	log.Debug().Str("Resource", mg.GetKind()).Msg("Deleting external resource.")
 
-	err = tools.UpdateStatus(ctx, mg, tools.UpdateOptions{
+	// Deleting finalizer
+	mg.SetFinalizers([]string{})
+	err = tools.Update(ctx, mg, tools.UpdateOptions{
 		DiscoveryClient: h.discoveryClient,
 		DynamicClient:   h.dynamicClient,
 	})
 	if err != nil {
-		log.Err(err).Msg("Updating status")
+		log.Err(err).Msg("Deleting finalizer")
 		return err
 	}
 

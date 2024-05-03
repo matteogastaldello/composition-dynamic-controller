@@ -147,11 +147,12 @@ func main() {
 			Version:  *resourceVersion,
 			Resource: *resourceName,
 		},
-		Namespace: *namespace,
-		Recorder:  rec,
-		Logger:    &log,
+		Namespace:      *namespace,
+		Recorder:       rec,
+		Logger:         &log,
+		ExternalClient: handler,
 	})
-	ctrl.SetExternalClient(handler)
+	// ctrl.SetExternalClient(handler)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), []os.Signal{
 		os.Interrupt,

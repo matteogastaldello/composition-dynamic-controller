@@ -35,8 +35,8 @@ type VerbsDescription struct {
 type Resource struct {
 	// Name: the name of the resource to manage
 	Kind string `json:"kind"`
-	// Identifier: the identifier of the resource to manage
-	Identifier string `json:"identifier"`
+	// Identifiers: the list of fields to use as identifiers
+	Identifiers []string `json:"identifiers"`
 	// VerbsDescription: the list of verbs to use on this resource
 	VerbsDescription []VerbsDescription `json:"verbsDescription"`
 	// CompareList: the list of fields to compare when checking if the resource is the same
@@ -132,10 +132,10 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 		return nil, err
 	}
 
-	sel, err := selectorForGroup(gvr)
-	if err != nil {
-		return nil, err
-	}
+	// sel, err := selectorForGroup(gvr)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	gvrForDefinitions := schema.GroupVersionResource{
 		Group:    "swaggergen.krateo.io",
@@ -145,9 +145,7 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 
 	all, err := g.dynamicClient.Resource(gvrForDefinitions).
 		Namespace(un.GetNamespace()).
-		List(context.Background(), metav1.ListOptions{
-			LabelSelector: sel,
-		})
+		List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +170,17 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 			return nil, err
 		}
 
+		kind, ok, err := unstructured.NestedString(item.Object, "spec", "resource", "kind")
+		if !ok {
+			return nil, fmt.Errorf("missing kind in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
+		}
+		if err != nil {
+			return nil, err
+		}
+		if kind != un.GetKind() {
+			continue
+		}
+
 		swaggerPath, ok, err := unstructured.NestedString(item.Object, "spec", "swaggerPath")
 		if !ok {
 			return nil, fmt.Errorf("missing spec.swaggerPath in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
@@ -180,10 +189,7 @@ func (g *dynamicGetter) Get(un *unstructured.Unstructured) (*Info, error) {
 			return nil, err
 		}
 
-		ownerRefs, ok, err := unstructured.NestedSlice(item.Object, "spec", "resource", "ownerRefs")
-		if !ok {
-			return nil, fmt.Errorf("missing spec.resource.ownerRefs in definition for '%v' in namespace: %s", gvr, un.GetNamespace())
-		}
+		ownerRefs, _, err := unstructured.NestedSlice(item.Object, "spec", "resource", "ownerRefs")
 		if err != nil {
 			return nil, err
 		}

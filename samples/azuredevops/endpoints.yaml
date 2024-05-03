@@ -17,7 +17,7 @@ spec:
     subscriptionId: 1272a66f-e2e8-4e88-ab43-487409186c3f
     subscriptionName: Microsoft Azure Sponsorship
     creationMode: Manual
-  name: se-13-auto
+  name: se-14-auto
   type: AzureRM
   url: https://management.azure.com/
   authorization:
@@ -32,11 +32,11 @@ spec:
     - projectReference:
         name: pipelineProj
         id: 915d9571-f027-40a6-ae76-5108c5f90e18
-      name: se-13-auto
-    - projectReference:
-        name: testShare
-        id: f5d938a5-4816-4a5a-894b-38d5bcf40738
-      name: testShare-endpoint-auto-13
+      name: se-14-auto
+  #   - projectReference:
+  #       name: testShare
+  #       id: f5d938a5-4816-4a5a-894b-38d5bcf40738
+  #     name: testShare-endpoint-auto-16
   organization: matteogastaldello-org
   api-version: 7.2-preview.4
 

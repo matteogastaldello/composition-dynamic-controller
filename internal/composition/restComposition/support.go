@@ -26,19 +26,22 @@ type RequestedParams struct {
 }
 
 type CallInfo struct {
-	Path            string
-	ReqParams       *RequestedParams
-	IdentifierField string
-	AltFields       map[string]string
+	Path             string
+	ReqParams        *RequestedParams
+	IdentifierFields []string
+	AltFields        map[string]string
 }
 
 type APIFuncDef func(ctx context.Context, cli *http.Client, path string, conf *restclient.RequestConfiguration) (*map[string]interface{}, error)
 
 func APICallBuilder(cli *restclient.UnstructuredClient, info *getter.Info, action apiaction.APIAction) (apifunc APIFuncDef, callInfo *CallInfo, err error) {
-	identifierField := info.Resource.Identifier
+	identifierFields := info.Resource.Identifiers
 	for _, descr := range info.Resource.VerbsDescription {
 		if strings.EqualFold(descr.Action, action.String()) {
 			method, err := restclient.StringToApiCallType(descr.Method)
+			if action == apiaction.FindBy {
+				method = restclient.APICallsTypeFindBy
+			}
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting method to api call type: %s", err)
 			}
@@ -61,8 +64,8 @@ func APICallBuilder(cli *restclient.UnstructuredClient, info *getter.Info, actio
 					Query:      query,
 					Body:       body,
 				},
-				AltFields:       descr.AltFieldMapping,
-				IdentifierField: identifierField,
+				AltFields:        descr.AltFieldMapping,
+				IdentifierFields: identifierFields,
 			}
 			switch method {
 			case restclient.APICallsTypeGet:
@@ -71,6 +74,12 @@ func APICallBuilder(cli *restclient.UnstructuredClient, info *getter.Info, actio
 				return cli.Post, callInfo, nil
 			case restclient.APICallsTypeList:
 				return cli.List, callInfo, nil
+			case restclient.APICallsTypeDelete:
+				return cli.Delete, callInfo, nil
+			case restclient.APICallsTypePatch:
+				return cli.Patch, callInfo, nil
+			case restclient.APICallsTypeFindBy:
+				return cli.FindBy, callInfo, nil
 			}
 		}
 	}
@@ -125,9 +134,7 @@ func resolveObjectFromReferenceInfo(ref getter.ReferenceInfo, mg *unstructured.U
 	}
 
 	all, err := dyClient.Resource(gvrForReference).
-		List(context.Background(), metav1.ListOptions{
-			// FieldSelector: fields.AndSelectors(fields.OneTermEqualSelector("krateo.io/crd-group", "group.group")).String(),
-		})
+		List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting reference resource - %w", err)
 	}
@@ -202,7 +209,6 @@ func isCRUpdated(def getter.Resource, mg *unstructured.Unstructured, rm map[stri
 	for k, v := range specs {
 		// Skip fields that are not in the response
 		if _, ok := rm[k]; !ok {
-			// fmt.Printf("skipping field: %s\n", k)
 			continue
 		}
 		if !reflect.DeepEqual(v, rm[k]) {
