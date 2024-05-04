@@ -92,40 +92,86 @@ func BuildCallConfig(callInfo *CallInfo, statusFields map[string]interface{}, sp
 	reqConfiguration.Query = make(map[string]string)
 	mapBody := make(map[string]interface{})
 
-	for field, value := range specFields {
-		f, ok := callInfo.AltFields[field]
-		if ok {
-			field = f
-		}
-		if callInfo.ReqParams.Parameters.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-
-			reqConfiguration.Parameters[field] = stringVal
-		} else if callInfo.ReqParams.Query.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Query[field] = stringVal
-		} else if callInfo.ReqParams.Body.Contains(field) {
-			mapBody[field] = value
-		}
-	}
-	for field, value := range statusFields {
-		f, ok := callInfo.AltFields[field]
-		if ok {
-			field = f
-		}
-		if callInfo.ReqParams.Parameters.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Parameters[field] = stringVal
-		} else if callInfo.ReqParams.Query.Contains(field) {
-			stringVal := fmt.Sprintf("%v", value)
-			reqConfiguration.Query[field] = stringVal
-		} else if callInfo.ReqParams.Body.Contains(field) {
-			mapBody[field] = value
-		}
-	}
+	// for field, value := range specFields {
+	// 	field, value = processAltFields(callInfo, field, value)
+	// 	if callInfo.ReqParams.Parameters.Contains(field) {
+	// 		stringVal := fmt.Sprintf("%v", value)
+	// 		reqConfiguration.Parameters[field] = stringVal
+	// 	} else if callInfo.ReqParams.Query.Contains(field) {
+	// 		stringVal := fmt.Sprintf("%v", value)
+	// 		reqConfiguration.Query[field] = stringVal
+	// 	} else if callInfo.ReqParams.Body.Contains(field) {
+	// 		mapBody[field] = value
+	// 	}
+	// }
+	// for field, value := range statusFields {
+	// 	// for k := range callInfo.AltFields {
+	// 	// 	fields := strings.Split(k, ".")
+	// 	// 	for _, field := range fields {
+	// 	// 		mapval, ok := value.(map[string]interface{})
+	// 	// 		if ok {
+	// 	// 			val, ok := mapval[field]
+	// 	// 			if ok {
+	// 	// 				value = val
+	// 	// 			}
+	// 	// 		}
+	// 	// 	}
+	// 	// }
+	// 	// f, ok := callInfo.AltFields[field]
+	// 	// if ok {
+	// 	// 	field = f
+	// 	// }
+	// 	field, value = processAltFields(callInfo, field, value)
+	// 	if callInfo.ReqParams.Parameters.Contains(field) {
+	// 		stringVal := fmt.Sprintf("%v", value)
+	// 		reqConfiguration.Parameters[field] = stringVal
+	// 	} else if callInfo.ReqParams.Query.Contains(field) {
+	// 		stringVal := fmt.Sprintf("%v", value)
+	// 		reqConfiguration.Query[field] = stringVal
+	// 	} else if callInfo.ReqParams.Body.Contains(field) {
+	// 		mapBody[field] = value
+	// 	}
+	// }
+	processFields(callInfo, specFields, reqConfiguration, mapBody)
+	processFields(callInfo, statusFields, reqConfiguration, mapBody)
 	reqConfiguration.Body = mapBody
 	return reqConfiguration
 }
+
+func processFields(callInfo *CallInfo, fields map[string]interface{}, reqConfiguration *restclient.RequestConfiguration, mapBody map[string]interface{}) {
+	for field, value := range fields {
+		field, value = processAltFields(callInfo, field, value)
+		if callInfo.ReqParams.Parameters.Contains(field) {
+			stringVal := fmt.Sprintf("%v", value)
+			reqConfiguration.Parameters[field] = stringVal
+		} else if callInfo.ReqParams.Query.Contains(field) {
+			stringVal := fmt.Sprintf("%v", value)
+			reqConfiguration.Query[field] = stringVal
+		} else if callInfo.ReqParams.Body.Contains(field) {
+			mapBody[field] = value
+		}
+	}
+}
+
+func processAltFields(callInfo *CallInfo, field string, value interface{}) (string, interface{}) {
+	for k := range callInfo.AltFields {
+		for _, field := range strings.Split(k, ".") {
+			mapval, ok := value.(map[string]interface{})
+			if ok {
+				val, ok := mapval[field]
+				if ok {
+					value = val
+				}
+			}
+		}
+	}
+	f, ok := callInfo.AltFields[field]
+	if ok {
+		field = f
+	}
+	return field, value
+}
+
 func resolveObjectFromReferenceInfo(ref getter.ReferenceInfo, mg *unstructured.Unstructured, dyClient dynamic.Interface) (*unstructured.Unstructured, error) {
 	gvrForReference := schema.GroupVersionResource{
 		Group:    ref.GroupVersionKind.Group,
